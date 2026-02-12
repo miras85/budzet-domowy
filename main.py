@@ -324,7 +324,41 @@ def delete_transaction(tx_id: int, db: Session = Depends(database.get_db), curre
     db.delete(tx); db.commit(); return {"status": "deleted"}
 
 @app.get("/api/goals")
-def get_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): return db.query(models.Goal).filter(models.Goal.is_archived == False).all()
+def get_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    goals = db.query(models.Goal).filter(models.Goal.is_archived == False).all()
+    result = []
+    
+    for g in goals:
+        # 1. Podstawowe dane
+        goal_data = {
+            "id": g.id,
+            "name": g.name,
+            "target_amount": float(g.target_amount),
+            "current_amount": float(g.current_amount),
+            "deadline": str(g.deadline),
+            "account_id": g.account_id,
+            "monthly_need": 0.0
+        }
+        
+        # 2. Obliczanie wymaganej kwoty miesięcznej
+        remaining = float(g.target_amount) - float(g.current_amount)
+        if remaining > 0:
+            cycles_left = 1
+            check_offset = 0
+            # Pętla sprawdzająca przyszłe okresy (identyczna jak w Dashboardzie)
+            while True:
+                _, cycle_end = get_billing_period(db, check_offset)
+                if cycle_end >= g.deadline:
+                    break
+                cycles_left += 1
+                check_offset += 1
+                if cycles_left > 120: break # Zabezpieczenie (max 10 lat)
+            
+            goal_data["monthly_need"] = remaining / cycles_left
+            
+        result.append(goal_data)
+        
+    return result
 @app.post("/api/goals")
 def create_goal(goal: GoalCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     # Sprawdź czy konto istnieje i czy jest oszczędnościowe

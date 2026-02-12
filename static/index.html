@@ -143,7 +143,7 @@
                     </div>
                     <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-purple-500">
                         <div>
-                            <div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele Oszczędnościowe</div>
+                            <div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele oszczędnościowe</div>
                             <div class="text-sm text-slate-200">Wymagane w tym okresie:</div>
                             <div class="text-xl font-bold text-purple-400">{{ formatMoney(dashboard.goals_monthly_need) }}</div>
                         </div>
@@ -246,21 +246,42 @@
                             </div>
 
                             <div class="space-y-4">
-                                <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-purple-500">
-                                    <div class="flex justify-between items-start mb-2">
-                                        <div>
-                                            <div class="font-bold text-lg text-white">{{ goal.name }}</div>
-                                            <div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div>
-                                            <!-- Pokazujemy przypisane konto -->
-                                            <div class="text-[10px] text-blue-400 mt-1 font-bold" v-if="getAccountName(goal.account_id)">
-                                                🏦 {{ getAccountName(goal.account_id) }}
-                                            </div>
-                                        </div>
-                                        <div class="text-right"><div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div><div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div></div>
-                                    </div>
-                                    <div class="w-full bg-slate-700 h-2 rounded-full mb-3 overflow-hidden"><div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div></div>
-                                    <div class="flex gap-2 mt-3"><button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Zasil</button><button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Przenieś</button><button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold">×</button></div>
-                                </div>
+                                <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-purple-500 relative overflow-hidden">
+                                                        <div class="flex justify-between items-start mb-2 relative z-10">
+                                                            <div>
+                                                                <div class="font-bold text-lg text-white">{{ goal.name }}</div>
+                                                                <div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div>
+                                                                <div class="text-[10px] text-blue-400 mt-1 font-bold" v-if="getAccountName(goal.account_id)">
+                                                                    🏦 {{ getAccountName(goal.account_id) }}
+                                                                </div>
+                                                            </div>
+                                                            <div class="text-right">
+                                                                <div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div>
+                                                                <div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <!-- Pasek postępu -->
+                                                        <div class="w-full bg-slate-700 h-2 rounded-full mb-2 overflow-hidden relative z-10">
+                                                            <div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div>
+                                                        </div>
+
+                                                        <!-- NOWE: Informacja o wymaganej wpłacie -->
+                                                        <div v-if="goal.monthly_need > 0" class="flex justify-between items-center mb-3 relative z-10">
+                                                            <div class="text-[10px] text-slate-400 uppercase font-bold">Wymagane w tym cyklu:</div>
+                                                            <div class="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded">
+                                                                {{ formatMoney(goal.monthly_need) }}
+                                                            </div>
+                                                        </div>
+                                                        <div v-else class="mb-3 text-xs text-green-400 font-bold text-right relative z-10">Cel osiągnięty! 🎉</div>
+
+                                                        <!-- Przyciski -->
+                                                        <div class="flex gap-2 mt-1 relative z-10">
+                                                            <button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700 border border-slate-700">Zasil</button>
+                                                            <button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700 border border-slate-700">Przenieś</button>
+                                                            <button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold border border-slate-700">×</button>
+                                                        </div>
+                                                    </div>
                             </div>
                         </div>
             <!-- DODAWANIE -->
