@@ -8,7 +8,7 @@ class Account(Base):
     name = Column(String(100))
     type = Column(String(50))
     balance = Column(DECIMAL(10, 2), default=0.0)
-    is_savings = Column(Boolean, default=False) # NOWE
+    is_savings = Column(Boolean, default=False)
 
 class Category(Base):
     __tablename__ = "categories"
@@ -24,7 +24,6 @@ class Loan(Base):
     monthly_payment = Column(DECIMAL(10, 2))
     next_payment_date = Column(Date)
 
-# NOWE: Model Celu
 class Goal(Base):
     __tablename__ = "goals"
     id = Column(Integer, primary_key=True, index=True)
@@ -59,3 +58,10 @@ class PaydayOverride(Base):
     year = Column(Integer)
     month = Column(Integer)
     day = Column(Integer)
+
+# --- NOWE: UŻYTKOWNIK ---
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, index=True)
+    hashed_password = Column(String(255))

@@ -1,18 +1,53 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import date, timedelta
-import models, database
+import models, database, auth
 from pydantic import BaseModel
 
+# Inicjalizacja bazy
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-print("--- SYSTEM STARTUP: WERSJA Z POPRAWIONYM WYLICZANIEM CYKLI CELOW ---")
+print("--- SYSTEM STARTUP: WERSJA Z LOGOWANIEM ---")
+
+# --- ZABEZPIECZENIA ---
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Nieprawidłowe dane logowania",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = auth.jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except auth.JWTError:
+        raise credentials_exception
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+# --- STARTUP: TWORZENIE ADMINA ---
+@app.on_event("startup")
+def create_default_user():
+    db = database.SessionLocal()
+    user = db.query(models.User).filter(models.User.username == "admin").first()
+    if not user:
+        print("--- TWORZENIE UŻYTKOWNIKA ADMIN ---")
+        hashed_pwd = auth.get_password_hash("admin")
+        new_user = models.User(username="admin", hashed_password=hashed_pwd)
+        db.add(new_user)
+        db.commit()
+    db.close()
 
 # --- DTO ---
 class TransactionCreate(BaseModel):
@@ -66,6 +101,14 @@ class GoalFund(BaseModel):
 class GoalTransfer(BaseModel):
     amount: float
     target_goal_id: int
+    
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
 
 # --- LOGIKA DAT ---
 def get_actual_payday(year, month, db: Session):
@@ -122,17 +165,32 @@ def update_loan_balance(db, loan_id, amount, is_reversal):
     if is_reversal: loan.remaining_amount = float(loan.remaining_amount) + val
     else: loan.remaining_amount = float(loan.remaining_amount) - val
 
-# --- API ---
+# --- API LOGOWANIA ---
+@app.post("/token")
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.username == form_data.username).first()
+    if not user or not auth.verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Błędny login lub hasło",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth.create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# --- API (ZABEZPIECZONE) ---
 
 @app.get("/api/dashboard")
-def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db)):
+def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     start_date, end_date = get_billing_period(db, offset)
     
     def get_sum(query_filter):
         result = db.query(func.sum(models.Transaction.amount)).filter(query_filter).scalar()
         return float(result) if result is not None else 0.0
 
-    # 1. Finanse
     raw_total = db.query(func.sum(models.Account.balance)).scalar()
     total_balance = float(raw_total) if raw_total is not None else 0.0
     
@@ -145,7 +203,6 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db)):
     exp_realized = get_sum((models.Transaction.type == 'expense') & (models.Transaction.status == 'zrealizowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
     exp_planned = get_sum((models.Transaction.type == 'expense') & (models.Transaction.status == 'planowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
 
-    # 2. Cele (POPRAWIONE WYLICZANIE CYKLI)
     goals = db.query(models.Goal).filter(models.Goal.is_archived == False).all()
     goals_monthly_need = 0.0
     goals_total_saved = 0.0
@@ -154,32 +211,18 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db)):
         current = float(g.current_amount)
         target = float(g.target_amount)
         goals_total_saved += current
-        
         remaining = target - current
         if remaining > 0:
-            # Obliczamy ile cykli rozliczeniowych zostało do deadline'u
-            cycles_left = 1 # Zawsze mamy przynajmniej ten bieżący cykl
+            cycles_left = 1
             check_offset = 0
-            
-            # Pętla sprawdzająca przyszłe okresy
             while True:
-                # Pobieramy datę końca cyklu dla danego offsetu (0 = obecny, 1 = następny...)
                 _, cycle_end = get_billing_period(db, check_offset)
-                
-                # Jeśli koniec tego cyklu jest już PO deadline, to znaczy że to ostatni cykl
-                if cycle_end >= g.deadline:
-                    break
-                
-                # Jeśli deadline jest dalej, mamy kolejny cykl do dyspozycji
+                if cycle_end >= g.deadline: break
                 cycles_left += 1
                 check_offset += 1
-                
-                # Zabezpieczenie przed nieskończoną pętlą (np. cel za 100 lat)
                 if cycles_left > 120: break
-
             goals_monthly_need += (remaining / cycles_left)
 
-    # 3. Lista transakcji
     recent = db.query(models.Transaction).filter(models.Transaction.date >= start_date, models.Transaction.date <= end_date).order_by(models.Transaction.date.desc()).all()
     
     tx_list = []
@@ -213,7 +256,7 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db)):
     }
 
 @app.get("/api/stats/trend")
-def get_trend(db: Session = Depends(database.get_db)):
+def get_trend(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     data = []
     for i in range(5, -1, -1):
         offset = -i
@@ -228,7 +271,7 @@ def get_trend(db: Session = Depends(database.get_db)):
     return data
 
 @app.post("/api/transactions")
-def add_transaction(tx: TransactionCreate, db: Session = Depends(database.get_db)):
+def add_transaction(tx: TransactionCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     cat_id = None
     if tx.type != 'transfer' and tx.category_name:
         cat = db.query(models.Category).filter(models.Category.name == tx.category_name).first()
@@ -246,7 +289,7 @@ def add_transaction(tx: TransactionCreate, db: Session = Depends(database.get_db
     return {"status": "added"}
 
 @app.put("/api/transactions/{tx_id}")
-def update_transaction(tx_id: int, tx_data: TransactionCreate, db: Session = Depends(database.get_db)):
+def update_transaction(tx_id: int, tx_data: TransactionCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     old_tx = db.query(models.Transaction).filter(models.Transaction.id == tx_id).first()
     if not old_tx: raise HTTPException(status_code=404)
     if old_tx.status == 'zrealizowana':
@@ -270,7 +313,7 @@ def update_transaction(tx_id: int, tx_data: TransactionCreate, db: Session = Dep
     return {"status": "updated"}
 
 @app.delete("/api/transactions/{tx_id}")
-def delete_transaction(tx_id: int, db: Session = Depends(database.get_db)):
+def delete_transaction(tx_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     tx = db.query(models.Transaction).filter(models.Transaction.id == tx_id).first()
     if not tx: raise HTTPException(status_code=404)
     if tx.status == 'zrealizowana':
@@ -278,31 +321,29 @@ def delete_transaction(tx_id: int, db: Session = Depends(database.get_db)):
         if tx.loan_id and tx.type == 'expense': update_loan_balance(db, tx.loan_id, tx.amount, is_reversal=True)
     db.delete(tx); db.commit(); return {"status": "deleted"}
 
-# --- CELE ---
 @app.get("/api/goals")
-def get_goals(db: Session = Depends(database.get_db)): return db.query(models.Goal).filter(models.Goal.is_archived == False).all()
+def get_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): return db.query(models.Goal).filter(models.Goal.is_archived == False).all()
 @app.post("/api/goals")
-def create_goal(goal: GoalCreate, db: Session = Depends(database.get_db)): db.add(models.Goal(**goal.dict())); db.commit(); return {"status": "ok"}
+def create_goal(goal: GoalCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): db.add(models.Goal(**goal.dict())); db.commit(); return {"status": "ok"}
 @app.post("/api/goals/{goal_id}/fund")
-def fund_goal(goal_id: int, fund: GoalFund, db: Session = Depends(database.get_db)):
+def fund_goal(goal_id: int, fund: GoalFund, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
     if not goal: raise HTTPException(status_code=404)
     acc = db.query(models.Account).filter(models.Account.id == fund.source_account_id).first()
     if not acc or not acc.is_savings: raise HTTPException(status_code=400, detail="Można zasilać tylko z kont oszczędnościowych")
     goal.current_amount = float(goal.current_amount) + fund.amount; db.commit(); return {"status": "funded"}
 @app.post("/api/goals/{goal_id}/transfer")
-def transfer_goal_funds(goal_id: int, transfer: GoalTransfer, db: Session = Depends(database.get_db)):
+def transfer_goal_funds(goal_id: int, transfer: GoalTransfer, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     source = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
     target = db.query(models.Goal).filter(models.Goal.id == transfer.target_goal_id).first()
     if not source or not target: raise HTTPException(status_code=404)
     if float(source.current_amount) < transfer.amount: raise HTTPException(status_code=400, detail="Brak środków")
     source.current_amount = float(source.current_amount) - transfer.amount; target.current_amount = float(target.current_amount) + transfer.amount; db.commit(); return {"status": "transferred"}
 @app.delete("/api/goals/{goal_id}")
-def delete_goal(goal_id: int, db: Session = Depends(database.get_db)): db.query(models.Goal).filter(models.Goal.id == goal_id).delete(); db.commit(); return {"status": "deleted"}
+def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): db.query(models.Goal).filter(models.Goal.id == goal_id).delete(); db.commit(); return {"status": "deleted"}
 
-# --- POZOSTAŁE ---
 @app.get("/api/loans")
-def get_loans(db: Session = Depends(database.get_db)):
+def get_loans(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     loans = db.query(models.Loan).order_by(models.Loan.next_payment_date).all()
     today = date.today(); limit_date = today + timedelta(days=30); upcoming = []; all_loans = []
     for l in loans:
@@ -310,44 +351,69 @@ def get_loans(db: Session = Depends(database.get_db)):
         all_loans.append({"id": l.id, "name": l.name, "total": float(l.total_amount), "remaining": float(l.remaining_amount), "monthly": float(l.monthly_payment), "next_date": str(l.next_payment_date)})
     return {"loans": all_loans, "upcoming": upcoming}
 @app.post("/api/loans")
-def create_loan(loan: LoanCreate, db: Session = Depends(database.get_db)): db_loan = models.Loan(**loan.dict()); db.add(db_loan); db.commit(); return {"status": "ok"}
+def create_loan(loan: LoanCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): db_loan = models.Loan(**loan.dict()); db.add(db_loan); db.commit(); return {"status": "ok"}
 @app.put("/api/loans/{loan_id}")
-def update_loan(loan_id: int, loan: LoanUpdate, db: Session = Depends(database.get_db)):
+def update_loan(loan_id: int, loan: LoanUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     db_loan = db.query(models.Loan).filter(models.Loan.id == loan_id).first()
     if not db_loan: raise HTTPException(status_code=404)
     db_loan.name = loan.name; db_loan.total_amount = loan.total_amount; db_loan.remaining_amount = loan.remaining_amount; db_loan.monthly_payment = loan.monthly_payment; db_loan.next_payment_date = loan.next_payment_date; db.commit(); return {"status": "updated"}
 @app.get("/api/categories")
-def get_categories(db: Session = Depends(database.get_db)): return db.query(models.Category).order_by(models.Category.name).all()
+def get_categories(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): return db.query(models.Category).order_by(models.Category.name).all()
 @app.post("/api/categories")
-def create_category(cat: CategoryCreate, db: Session = Depends(database.get_db)):
+def create_category(cat: CategoryCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     if db.query(models.Category).filter(models.Category.name == cat.name).first(): raise HTTPException(status_code=400, detail="Kategoria istnieje")
     db.add(models.Category(name=cat.name)); db.commit(); return {"status": "ok"}
 @app.put("/api/categories/{cat_id}")
-def update_category(cat_id: int, cat: CategoryCreate, db: Session = Depends(database.get_db)):
+def update_category(cat_id: int, cat: CategoryCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     db_cat = db.query(models.Category).filter(models.Category.id == cat_id).first(); db_cat.name = cat.name; db.commit(); return {"status": "updated"}
 @app.delete("/api/categories/{cat_id}")
-def delete_category(cat_id: int, db: Session = Depends(database.get_db)): db.query(models.Category).filter(models.Category.id == cat_id).delete(); db.commit(); return {"status": "deleted"}
+def delete_category(cat_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): db.query(models.Category).filter(models.Category.id == cat_id).delete(); db.commit(); return {"status": "deleted"}
 @app.get("/api/settings/payday-overrides")
-def get_payday_overrides(db: Session = Depends(database.get_db)): return db.query(models.PaydayOverride).order_by(models.PaydayOverride.year.desc(), models.PaydayOverride.month.desc()).all()
+def get_payday_overrides(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): return db.query(models.PaydayOverride).order_by(models.PaydayOverride.year.desc(), models.PaydayOverride.month.desc()).all()
 @app.post("/api/settings/payday-overrides")
-def add_payday_override(ov: PaydayOverrideCreate, db: Session = Depends(database.get_db)):
+def add_payday_override(ov: PaydayOverrideCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     existing = db.query(models.PaydayOverride).filter(models.PaydayOverride.year == ov.year, models.PaydayOverride.month == ov.month).first()
     if existing: existing.day = ov.day
     else: db.add(models.PaydayOverride(year=ov.year, month=ov.month, day=ov.day))
     db.commit(); return {"status": "ok"}
 @app.delete("/api/settings/payday-overrides/{id}")
-def delete_payday_override(id: int, db: Session = Depends(database.get_db)): db.query(models.PaydayOverride).filter(models.PaydayOverride.id == id).delete(); db.commit(); return {"status": "deleted"}
+def delete_payday_override(id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): db.query(models.PaydayOverride).filter(models.PaydayOverride.id == id).delete(); db.commit(); return {"status": "deleted"}
 @app.put("/api/accounts/{account_id}")
-def update_account(account_id: int, acc: AccountUpdate, db: Session = Depends(database.get_db)):
+def update_account(account_id: int, acc: AccountUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     db_acc = db.query(models.Account).filter(models.Account.id == account_id).first()
     if not db_acc: raise HTTPException(status_code=404)
     db_acc.name = acc.name; db_acc.type = acc.type; db_acc.balance = acc.balance; db_acc.is_savings = acc.is_savings; db.commit(); return {"status": "updated"}
 @app.get("/api/accounts")
-def get_accounts(db: Session = Depends(database.get_db)): return db.query(models.Account).all()
+def get_accounts(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): return db.query(models.Account).all()
 @app.delete("/api/accounts/{account_id}")
-def delete_account(account_id: int, db: Session = Depends(database.get_db)): db.query(models.Transaction).filter(models.Transaction.account_id == account_id).delete(); db.query(models.Account).filter(models.Account.id == account_id).delete(); db.commit(); return {"status": "deleted"}
+def delete_account(account_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): db.query(models.Transaction).filter(models.Transaction.account_id == account_id).delete(); db.query(models.Account).filter(models.Account.id == account_id).delete(); db.commit(); return {"status": "deleted"}
 @app.post("/api/accounts")
-def create_account(acc: AccountUpdate, db: Session = Depends(database.get_db)): db_acc = models.Account(name=acc.name, type=acc.type, balance=acc.balance, is_savings=acc.is_savings); db.add(db_acc); db.commit(); return {"status": "ok"}
+def create_account(acc: AccountUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): db_acc = models.Account(name=acc.name, type=acc.type, balance=acc.balance, is_savings=acc.is_savings); db.add(db_acc); db.commit(); return {"status": "ok"}
+
+@app.post("/api/users")
+def create_user(user: UserCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    # Sprawdź czy użytkownik już istnieje
+    if db.query(models.User).filter(models.User.username == user.username).first():
+        raise HTTPException(status_code=400, detail="Taki użytkownik już istnieje")
+    
+    # Zahaszuj hasło i zapisz
+    hashed_pwd = auth.get_password_hash(user.password)
+    new_user = models.User(username=user.username, hashed_password=hashed_pwd)
+    db.add(new_user)
+    db.commit()
+    return {"status": "created", "user": user.username}
+
+@app.post("/api/users/change-password")
+def change_password(pwd: PasswordChange, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    # Sprawdź stare hasło
+    if not auth.verify_password(pwd.old_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Stare hasło jest nieprawidłowe")
+    
+    # Zapisz nowe
+    current_user.hashed_password = auth.get_password_hash(pwd.new_password)
+    db.commit()
+    return {"status": "password_changed"}
+
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")

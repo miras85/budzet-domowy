@@ -22,26 +22,21 @@
         .safe-top { padding-top: env(safe-area-inset-top); }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
         
-        /* POPRAWIONE FILTRY */
         .filter-btn { @apply px-3 py-1.5 rounded-full text-xs font-bold border border-slate-700 text-slate-400 transition-all; }
         .filter-btn.active { @apply bg-blue-600 text-white border-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.5)]; }
 
-        /* ANIMACJE PRZEJŚCIA (SWIPE) */
         .slide-next-enter-active, .slide-next-leave-active,
-        .slide-prev-enter-active, .slide-prev-leave-active {
-            transition: all 0.25s ease-out;
-        }
+        .slide-prev-enter-active, .slide-prev-leave-active { transition: all 0.25s ease-out; }
         .slide-next-enter-from { transform: translateX(50px); opacity: 0; }
         .slide-next-leave-to { transform: translateX(-50px); opacity: 0; }
         .slide-prev-enter-from { transform: translateX(-50px); opacity: 0; }
         .slide-prev-leave-to { transform: translateX(50px); opacity: 0; }
 
-        /* STYL NAWIGACJI */
         .nav-container { display: flex; justify-content: space-between; align-items: center; height: 100%; padding: 0 10px; position: relative; }
         .nav-group { display: flex; gap: 20px; width: 40%; justify-content: space-around; }
         .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #64748b; transition: color 0.2s; width: 50px; cursor: pointer; }
         .nav-item.active { color: #60a5fa; }
-        .nav-icon { margin-bottom: 2px; } /* Usunięto font-size, bo teraz to SVG */
+        .nav-icon { margin-bottom: 2px; }
         .nav-label { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.5px; }
         
         .fab-container { position: absolute; left: 50%; top: -25px; transform: translateX(-50%); }
@@ -52,31 +47,55 @@
 <body>
     <div id="app" class="h-screen flex flex-col">
         
-        <!-- GŁÓWNY OBSZAR TREŚCI -->
-        <div class="flex-1 overflow-y-auto overflow-x-hidden pb-24 safe-top relative"
+        <!-- EKRAN LOGOWANIA -->
+        <div v-if="!isLoggedIn" class="h-screen flex flex-col items-center justify-center p-6 bg-slate-900">
+            <div class="w-full max-w-sm glass-panel p-8 rounded-3xl shadow-2xl border-t border-white/10">
+                <div class="text-center mb-8">
+                    <div class="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-lg shadow-blue-500/30 mb-4">🔐</div>
+                    <h1 class="text-2xl font-bold text-white">Witaj z powrotem</h1>
+                    <p class="text-slate-400 text-sm mt-2">Zaloguj się do swojego budżetu</p>
+                </div>
+                <form @submit.prevent="login" class="space-y-4">
+                    <div>
+                        <label class="text-xs font-bold text-slate-400 uppercase ml-1">Login</label>
+                        <input v-model="loginForm.username" type="text" class="w-full input-dark p-3 rounded-xl mt-1" placeholder="np. admin">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-400 uppercase ml-1">Hasło</label>
+                        <input v-model="loginForm.password" type="password" class="w-full input-dark p-3 rounded-xl mt-1" placeholder="••••••••">
+                    </div>
+                    <div v-if="loginError" class="text-red-400 text-xs text-center font-bold bg-red-900/20 p-2 rounded-lg">{{ loginError }}</div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-95 mt-4">Zaloguj się</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- GŁÓWNY OBSZAR TREŚCI (TYLKO DLA ZALOGOWANYCH) -->
+        <div v-else class="flex-1 overflow-y-auto overflow-x-hidden pb-24 safe-top relative"
              @touchstart="handleTouchStart"
              @touchend="handleTouchEnd">
             
-            <!-- HEADER (WSPÓLNY) -->
+            <!-- HEADER -->
             <div class="p-6 pb-2 flex justify-between items-center">
                 <h1 class="text-xl font-bold text-slate-100">Mój Portfel</h1>
-                <!-- IKONA USTAWIEŃ -->
-                <button @click="currentTab = 'settings'" class="text-slate-400 hover:text-white p-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.581-.495.644-.869l.214-1.281z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                </button>
+                <div class="flex gap-2">
+                    <button @click="currentTab = 'settings'" class="text-slate-400 hover:text-white p-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.581-.495.644-.869l.214-1.281z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    </button>
+                    <button @click="logout" class="text-slate-400 hover:text-red-400 p-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- DASHBOARD -->
             <div v-if="currentTab === 'dashboard'">
                 <div class="px-6">
-                    <!-- PRZYCISKI NAWIGACJI OKRESU -->
                     <div class="flex items-center justify-center gap-3 bg-slate-800/50 rounded-xl p-1.5 border border-slate-700/50 mb-4">
                         <button @click="changePeriod(-1)" class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white transition-all active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg></button>
                         <div class="flex flex-col items-center px-2 cursor-pointer min-w-[90px]" @click="periodOffset = 0; fetchData()"><span class="text-xs font-bold text-slate-200 whitespace-nowrap">{{ formatDateShort(dashboard.period_start) }} - {{ formatDateShort(dashboard.period_end) }}</span><span v-if="periodOffset !== 0" class="text-[10px] text-blue-400 font-bold tracking-wider mt-0.5">WRÓĆ DO DZIŚ</span></div>
                         <button @click="changePeriod(1)" class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white transition-all active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg></button>
                     </div>
-                    
-                    <!-- KARTA PODSUMOWANIA -->
                     <div class="gradient-card rounded-3xl p-6 shadow-2xl shadow-blue-900/20 relative overflow-hidden mb-4">
                         <div class="relative z-10">
                             <div class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Saldo Miesięczne (Cashflow)</div>
@@ -91,8 +110,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- PODSUMOWANIE CELÓW -->
                     <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-purple-500">
                         <div>
                             <div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele Oszczędnościowe</div>
@@ -104,8 +121,6 @@
                             <div class="text-lg font-bold text-white">{{ formatMoney(dashboard.goals_total_saved) }}</div>
                         </div>
                     </div>
-
-                    <!-- ANIMOWANA ZAWARTOŚĆ -->
                     <transition :name="transitionName" mode="out-in">
                         <div :key="periodOffset">
                             <div class="flex flex-col gap-3 mb-4">
@@ -125,7 +140,6 @@
                                     <button @click="filterStatus = 'planowana'" :class="{active: filterStatus === 'planowana'}" class="filter-btn">Plan.</button>
                                 </div>
                             </div>
-
                             <div v-if="viewMode === 'list'" class="space-y-3">
                                 <div v-if="filteredTransactions.length === 0" class="text-center text-slate-500 py-10">Brak transakcji w tym okresie</div>
                                 <div v-for="tx in filteredTransactions" :key="tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3 group transition-all" :class="tx.status === 'planowana' ? 'opacity-70 border-dashed border-slate-600' : ''">
@@ -134,11 +148,9 @@
                                     <div class="flex flex-col items-end gap-1 shrink-0"><div :class="getColorClass(tx.type)" class="font-bold text-sm whitespace-nowrap">{{ tx.type === 'income' ? '+' : (tx.type === 'transfer' ? '' : '-') }}{{ formatMoney(tx.amount) }}</div><div class="flex items-center gap-3 mt-1"><button v-if="tx.status === 'planowana'" @click="realizeTx(tx)" class="w-7 h-7 rounded-full bg-green-600/20 text-green-400 flex items-center justify-center hover:bg-green-600 hover:text-white transition-colors">✓</button><button @click="editTx(tx)" class="text-slate-500 hover:text-blue-400 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg></button><button @click="deleteTx(tx.id)" class="text-slate-500 hover:text-red-500 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg></button></div></div>
                                 </div>
                             </div>
-
                             <div v-if="viewMode === 'categories'" class="grid grid-cols-2 gap-3">
                                 <div v-for="cat in groupedCategories" :key="cat.name" @click="openCategoryDetails(cat)" class="glass-panel p-4 rounded-2xl active:scale-95 transition-transform cursor-pointer"><div class="flex justify-between items-start mb-2"><div class="font-bold text-slate-200 truncate text-sm">{{ cat.name }}</div><div class="text-xs text-slate-500">{{ cat.count }}</div></div><div :class="cat.total < 0 ? 'text-red-400' : 'text-green-400'" class="text-lg font-bold">{{ formatMoney(Math.abs(cat.total)) }}</div><div class="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden"><div :class="cat.total < 0 ? 'bg-red-500' : 'bg-green-500'" class="h-full" :style="{ width: Math.min(100, (Math.abs(cat.total) / maxCategoryAmount) * 100) + '%' }"></div></div></div>
                             </div>
-
                             <div v-show="viewMode === 'chart'" class="space-y-6">
                                 <div class="glass-panel p-4 rounded-2xl"><h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Trend Finansowy (6 msc)</h3><div class="relative h-48 w-full"><canvas id="trendChart"></canvas></div></div>
                                 <div class="glass-panel p-4 rounded-2xl"><h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Struktura Wydatków</h3><div class="space-y-4"><div v-for="cat in expenseCategories" :key="cat.name" class="group"><div class="flex justify-between items-end mb-1"><div class="font-bold text-slate-200 text-sm">{{ cat.name }}</div><div class="text-right"><div class="font-bold text-slate-200 text-sm">{{ formatMoney(Math.abs(cat.total)) }}</div><div class="text-[10px] text-slate-500">{{ cat.percent }}%</div></div></div><div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden"><div class="bg-blue-500 h-full rounded-full" :style="{ width: cat.percent + '%' }"></div></div></div><div v-if="expenseCategories.length === 0" class="text-center text-slate-500 text-sm py-4">Brak wydatków w tym okresie</div></div></div>
@@ -148,10 +160,9 @@
                 </div>
             </div>
 
-            <!-- CELE (NOWA ZAKŁADKA) -->
+            <!-- CELE -->
             <div v-if="currentTab === 'goals'" class="px-6">
                 <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Cele Oszczędnościowe</h2><button @click="showAddGoal = !showAddGoal" class="text-blue-400 text-sm font-bold">{{ showAddGoal ? 'Anuluj' : '+ Dodaj' }}</button></div>
-                
                 <div v-if="showAddGoal" class="glass-panel p-4 rounded-2xl mb-6">
                     <div class="space-y-3">
                         <input v-model="newGoal.name" placeholder="Nazwa celu" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
@@ -160,32 +171,19 @@
                         <button @click="submitGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Utwórz Cel</button>
                     </div>
                 </div>
-
                 <div class="space-y-4">
                     <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-purple-500">
                         <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <div class="font-bold text-lg text-white">{{ goal.name }}</div>
-                                <div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div>
-                            </div>
-                            <div class="text-right">
-                                <div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div>
-                                <div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div>
-                            </div>
+                            <div><div class="font-bold text-lg text-white">{{ goal.name }}</div><div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div></div>
+                            <div class="text-right"><div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div><div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div></div>
                         </div>
-                        <div class="w-full bg-slate-700 h-2 rounded-full mb-3 overflow-hidden">
-                            <div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div>
-                        </div>
-                        <div class="flex gap-2 mt-3">
-                            <button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Zasil</button>
-                            <button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Przenieś</button>
-                            <button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold">×</button>
-                        </div>
+                        <div class="w-full bg-slate-700 h-2 rounded-full mb-3 overflow-hidden"><div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div></div>
+                        <div class="flex gap-2 mt-3"><button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Zasil</button><button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Przenieś</button><button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold">×</button></div>
                     </div>
                 </div>
             </div>
 
-            <!-- INNE ZAKŁADKI (ADD, ACCOUNTS, LOANS, SETTINGS) -->
+            <!-- DODAWANIE -->
             <div v-if="currentTab === 'add'" class="px-6 pt-6 pb-40">
                 <h2 class="text-xl font-bold text-white mb-6">{{ editingTxId ? 'Edytuj operację' : 'Nowa operacja' }}</h2>
                 <div class="flex p-1 bg-slate-800 rounded-xl mb-6">
@@ -205,11 +203,13 @@
                 </div>
             </div>
 
+            <!-- KONTA -->
             <div v-if="currentTab === 'accounts'" class="px-6 pt-6">
                 <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Moje Konta</h2><button @click="createTestAccount" class="text-blue-400 text-sm font-bold">+ Dodaj</button></div>
                 <div class="grid gap-4"><div v-for="acc in accounts" :key="acc.id" class="glass-panel p-5 rounded-2xl border-l-4" :class="acc.is_savings ? 'border-purple-500' : 'border-blue-500'"><div class="flex justify-between items-center"><div><div class="text-xs text-slate-400 uppercase">{{ acc.type }} <span v-if="acc.is_savings" class="text-purple-400 font-bold">(Oszcz.)</span></div><div class="font-bold text-lg text-white">{{ acc.name }}</div><div class="text-xl font-bold text-blue-400 mt-1">{{ formatMoney(acc.balance) }}</div></div><div class="flex gap-2"><button @click="editAccount(acc)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-blue-400">✏️</button><button @click="deleteAccount(acc.id)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-red-500">🗑️</button></div></div></div></div>
             </div>
 
+            <!-- KREDYTY -->
             <div v-if="currentTab === 'loans'" class="px-6 pt-6">
                 <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Kredyty</h2><button @click="showAddLoan = !showAddLoan" class="text-blue-400 text-sm font-bold">{{ showAddLoan ? 'Anuluj' : '+ Dodaj' }}</button></div>
                 <div v-if="loansData.upcoming && loansData.upcoming.length > 0" class="mb-6"><h3 class="text-xs font-bold text-slate-400 uppercase mb-2">Nadchodzące (30 dni)</h3><div class="flex gap-3 overflow-x-auto pb-2"><div v-for="pay in loansData.upcoming" class="bg-slate-800 p-3 rounded-xl min-w-[140px] border border-slate-700"><div class="text-xs text-slate-400">{{ pay.date }}</div><div class="font-bold text-white text-sm truncate">{{ pay.name }}</div><div class="text-red-400 font-bold">{{ formatMoney(pay.amount) }}</div></div></div></div>
@@ -218,55 +218,92 @@
                 <div class="space-y-4"><div v-for="loan in filteredLoans" :key="loan.id" class="glass-panel p-5 rounded-2xl border-l-4" :class="loan.remaining <= 0 ? 'border-green-500 opacity-60' : 'border-red-500'"><div class="flex justify-between items-start mb-2"><div><div class="font-bold text-lg text-white">{{ loan.name }}</div><div :class="loan.remaining <= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold">{{ formatMoney(loan.remaining) }}</div></div><button @click="editLoan(loan)" class="text-slate-500 hover:text-blue-400 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg></button></div><div class="w-full bg-slate-700 h-2 rounded-full mb-3 overflow-hidden"><div class="bg-green-500 h-full" :style="{ width: calculateProgress(loan) + '%' }"></div></div><div class="flex justify-between text-xs text-slate-400"><div>Rata: <span class="text-slate-200">{{ formatMoney(loan.monthly) }}</span></div><div>Termin: <span class="text-slate-200">{{ loan.next_date }}</span></div></div></div></div>
             </div>
 
+            <!-- USTAWIENIA -->
             <div v-if="currentTab === 'settings'" class="px-6 pt-6">
                 <h2 class="text-xl font-bold text-white mb-6">Ustawienia</h2>
                 <div class="glass-panel p-5 rounded-2xl mb-6"><h3 class="font-bold text-slate-200 mb-4">Kategorie</h3><div class="flex gap-2 mb-4"><input v-model="newCategoryName" type="text" placeholder="Nowa kategoria" class="input-dark flex-1 p-2 rounded-lg"><button @click="addCategory" class="bg-blue-600 text-white px-4 rounded-lg font-bold">+</button></div><div class="flex flex-wrap gap-2"><div v-for="cat in categories" :key="cat.id" class="bg-slate-800 px-3 py-1 rounded-full text-sm flex items-center gap-2 border border-slate-700">{{ cat.name }}<button @click="deleteCategory(cat.id)" class="text-red-400 font-bold ml-1">×</button></div></div></div>
                 <div class="glass-panel p-5 rounded-2xl mb-6"><h3 class="font-bold text-slate-200 mb-4">Wyjątki Dnia Wypłaty</h3><div class="flex gap-2 mb-4"><input v-model="newOverride.year" type="number" placeholder="Rok" class="input-dark w-20 p-2 rounded-lg text-center"><select v-model="newOverride.month" class="input-dark flex-1 p-2 rounded-lg"><option v-for="m in 12" :value="m">{{ m }}</option></select><input v-model="newOverride.day" type="number" placeholder="Dzień" class="input-dark w-16 p-2 rounded-lg text-center"><button @click="addOverride" class="bg-blue-600 text-white px-4 rounded-lg font-bold">+</button></div><div class="space-y-2"><div v-for="ov in overrides" :key="ov.id" class="flex justify-between items-center bg-slate-800 p-3 rounded-lg"><div class="text-sm text-slate-200"><span class="font-bold">{{ ov.year }}-{{ String(ov.month).padStart(2, '0') }}</span>: Wypłata {{ ov.day }}-go</div><button @click="deleteOverride(ov.id)" class="text-red-400 text-xs font-bold">USUŃ</button></div></div></div>
+                
+                <!-- PANEL BEZPIECZEŃSTWA -->
+                <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-blue-500">
+                    <h3 class="font-bold text-slate-200 mb-4">Bezpieczeństwo</h3>
+                    <div class="mb-6">
+                        <h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Zmień swoje hasło</h4>
+                        <div class="space-y-2">
+                            <input v-model="security.oldPassword" type="password" placeholder="Stare hasło" class="input-dark w-full p-2 rounded-lg text-sm">
+                            <input v-model="security.newPassword" type="password" placeholder="Nowe hasło" class="input-dark w-full p-2 rounded-lg text-sm">
+                            <button @click="changePassword" class="w-full bg-slate-700 hover:bg-blue-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">Zatwierdź zmianę</button>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Dodaj domownika</h4>
+                        <div class="flex gap-2 mb-2">
+                            <input v-model="security.newUsername" type="text" placeholder="Login (np. zona)" class="input-dark flex-1 p-2 rounded-lg text-sm">
+                            <input v-model="security.newUserPass" type="password" placeholder="Hasło" class="input-dark flex-1 p-2 rounded-lg text-sm">
+                        </div>
+                        <button @click="registerUser" class="w-full bg-slate-700 hover:bg-green-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">+ Utwórz konto</button>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- MODALE (KATEGORIE, KREDYTY, CELE) -->
+        <!-- MODALE -->
         <div v-if="selectedCategory" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="selectedCategory = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5 max-h-[80vh] overflow-y-auto"><div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-white">{{ selectedCategory.name }}</h3><button @click="selectedCategory = null" class="text-slate-400 text-2xl">&times;</button></div><div class="space-y-3"><div v-for="tx in selectedCategory.transactions" :key="tx.id" class="flex justify-between items-center border-b border-slate-700 pb-2"><div><div class="text-sm text-slate-200">{{ tx.desc }}</div><div class="text-xs text-slate-500">{{ tx.date }}</div></div><div :class="tx.type === 'expense' ? 'text-red-400' : 'text-green-400'" class="font-bold text-sm">{{ formatMoney(tx.amount) }}</div></div></div></div></div>
         <div v-if="editingLoan" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="editingLoan = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Edytuj Kredyt</h3><div class="space-y-3"><input v-model="editingLoan.name" placeholder="Nazwa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.next_payment_date" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="updateLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz zmiany</button></div></div></div>
-        
-        <!-- MODAL ZASILANIA CELU -->
-        <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null">
-            <div class="glass-panel w-full max-w-md rounded-2xl p-5">
-                <h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3>
-                <div class="space-y-3">
-                    <label class="text-xs text-slate-400 uppercase font-bold">Z konta oszczędnościowego</label>
-                    <select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                        <option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option>
-                    </select>
-                    <input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                    <button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- MODAL TRANSFERU MIĘDZY CELAMI -->
-        <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null">
-            <div class="glass-panel w-full max-w-md rounded-2xl p-5">
-                <h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3>
-                <div class="space-y-3">
-                    <label class="text-xs text-slate-400 uppercase font-bold">Na cel</label>
-                    <select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                        <option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option>
-                    </select>
-                    <input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                    <button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button>
-                </div>
-            </div>
-        </div>
+        <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Z konta oszczędnościowego</label><select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option></select><input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil</button></div></div></div>
+        <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
 
         <!-- NAV -->
-        <div class="fixed bottom-0 left-0 right-0 glass-panel border-t border-slate-800 pb-safe safe-bottom z-50 h-16">
-            <div class="nav-container">
-                <div class="nav-group"><div @click="currentTab = 'dashboard'" :class="{active: currentTab === 'dashboard'}" class="nav-item"><span class="nav-icon">🏠</span><span class="nav-label">Pulpit</span></div><div @click="currentTab = 'accounts'" :class="{active: currentTab === 'accounts'}" class="nav-item"><span class="nav-icon">💳</span><span class="nav-label">Konta</span></div></div>
-                <div class="fab-container"><button @click="resetForm(); currentTab = 'add'" class="fab-btn"><span>+</span></button></div>
-                <div class="nav-group"><div @click="currentTab = 'loans'" :class="{active: currentTab === 'loans'}" class="nav-item"><span class="nav-icon">🏛️</span><span class="nav-label">Kredyty</span></div><div @click="currentTab = 'goals'" :class="{active: currentTab === 'goals'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mb-1"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" /></svg><span class="nav-label">Cele</span></div></div>
-            </div>
-        </div>
+                <div v-if="isLoggedIn" class="fixed bottom-0 left-0 right-0 glass-panel border-t border-slate-800 pb-safe safe-bottom z-50 h-16">
+                    <div class="nav-container">
+                        <!-- LEWA STRONA -->
+                        <div class="nav-group">
+                            <!-- PULPIT (Dom) -->
+                            <div @click="currentTab = 'dashboard'" :class="{active: currentTab === 'dashboard'}" class="nav-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                                </svg>
+                                <span class="nav-label">Pulpit</span>
+                            </div>
+                            
+                            <!-- KONTA (Karta - Bardzo czytelna) -->
+                            <div @click="currentTab = 'accounts'" :class="{active: currentTab === 'accounts'}" class="nav-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5H4.5a2.25 2.25 0 00-2.25 2.25v10.5a2.25 2.25 0 002.25 2.25z" />
+                                </svg>
+                                <span class="nav-label">Konta</span>
+                            </div>
+                        </div>
+
+                        <!-- ŚRODEK (FAB - Przycisk Dodawania) -->
+                        <div class="fab-container">
+                            <button @click="resetForm(); currentTab = 'add'" class="fab-btn group">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-8 h-8 group-active:rotate-90 transition-transform duration-200">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- PRAWA STRONA -->
+                        <div class="nav-group">
+                            <!-- KREDYTY (Banknoty - Wyraźne) -->
+                            <div @click="currentTab = 'loans'" :class="{active: currentTab === 'loans'}" class="nav-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                                </svg>
+                                <span class="nav-label">Kredyty</span>
+                            </div>
+
+                            <!-- CELE (Flaga - Prosta i symboliczna) -->
+                            <div @click="currentTab = 'goals'" :class="{active: currentTab === 'goals'}" class="nav-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />
+                                </svg>
+                                <span class="nav-label">Cele</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
     </div>
 
     <script>
@@ -275,6 +312,12 @@
         createApp({
             data() {
                 return {
+                    isLoggedIn: false,
+                    loginForm: { username: '', password: '' },
+                    loginError: '',
+                    token: localStorage.getItem('token') || null,
+                    security: { oldPassword: '', newPassword: '', newUsername: '', newUserPass: '' },
+                    
                     currentTab: 'dashboard',
                     viewMode: 'list',
                     periodOffset: 0,
@@ -314,6 +357,7 @@
                 activeLoans() { if (!this.loansData.loans) return []; return this.loansData.loans.filter(l => l.remaining > 0); },
                 savingsAccounts() { return this.accounts.filter(a => a.is_savings); },
                 filteredTransactions() {
+                    if (!this.dashboard.recent_transactions) return [];
                     let txs = this.dashboard.recent_transactions;
                     if (this.filterStatus !== 'all') txs = txs.filter(tx => tx.status === this.filterStatus);
                     if (this.filterAccount) txs = txs.filter(tx => tx.account_id === this.filterAccount || tx.target_account_id === this.filterAccount);
@@ -338,8 +382,59 @@
                     return this.groupedCategories.filter(c => c.total < 0).map(c => ({ ...c, percent: ((Math.abs(c.total) / totalExp) * 100).toFixed(1) }));
                 }
             },
-            watch: { viewMode(newVal) { if (newVal === 'chart') this.fetchTrendData(); } },
+            watch: { viewMode(newVal) { if (newVal === 'chart') this.renderChart(); } },
             methods: {
+                async login() {
+                    this.loginError = '';
+                    const formData = new FormData();
+                    formData.append('username', this.loginForm.username);
+                    formData.append('password', this.loginForm.password);
+                    try {
+                        const res = await fetch('/token', { method: 'POST', body: formData });
+                        if (!res.ok) throw new Error('Błędne dane');
+                        const data = await res.json();
+                        this.token = data.access_token;
+                        localStorage.setItem('token', this.token);
+                        this.isLoggedIn = true;
+                        this.refreshAllData();
+                    } catch (e) { this.loginError = "Nieprawidłowy login lub hasło"; }
+                },
+                logout() { this.token = null; localStorage.removeItem('token'); this.isLoggedIn = false; this.loginForm.username = ''; this.loginForm.password = ''; },
+                async authFetch(url, options = {}) {
+                    if (!options.headers) options.headers = {};
+                    options.headers['Authorization'] = `Bearer ${this.token}`;
+                    const res = await fetch(url, options);
+                    if (res.status === 401) { this.logout(); throw new Error("Unauthorized"); }
+                    return res;
+                },
+                refreshAllData() { this.fetchData(); this.fetchAccounts(); this.fetchLoans(); this.fetchGoals(); this.fetchCategories(); this.fetchOverrides(); },
+                
+                async changePassword() {
+                    if(!this.security.oldPassword || !this.security.newPassword) return alert("Wpisz oba hasła");
+                    try {
+                        await this.authFetch('/api/users/change-password', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ old_password: this.security.oldPassword, new_password: this.security.newPassword })
+                        });
+                        alert("Hasło zmienione pomyślnie!");
+                        this.security.oldPassword = ''; this.security.newPassword = '';
+                    } catch(e) { alert("Błąd: Sprawdź stare hasło"); }
+                },
+
+                async registerUser() {
+                    if(!this.security.newUsername || !this.security.newUserPass) return alert("Wpisz login i hasło");
+                    try {
+                        await this.authFetch('/api/users', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ username: this.security.newUsername, password: this.security.newUserPass })
+                        });
+                        alert(`Użytkownik ${this.security.newUsername} dodany!`);
+                        this.security.newUsername = ''; this.security.newUserPass = '';
+                    } catch(e) { alert("Błąd: Taki użytkownik może już istnieć"); }
+                },
+
                 formatMoney(value) { return parseFloat(value).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł'; },
                 formatDateShort(dateStr) { if(!dateStr) return ''; const d = new Date(dateStr); return d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' }); },
                 getIcon(type) { return type === 'income' ? '💰' : (type === 'transfer' ? '↔️' : '🛒'); },
@@ -352,33 +447,32 @@
                 handleSwipe() { if (this.currentTab !== 'dashboard') return; const diff = this.touchEndX - this.touchStartX; if (diff > 50) this.changePeriod(-1); if (diff < -50) this.changePeriod(1); },
 
                 openCategoryDetails(cat) { this.selectedCategory = cat; },
-
                 async fetchData() {
+                    if (!this.isLoggedIn) return;
                     try {
-                        this.dashboard = await (await fetch(`/api/dashboard?offset=${this.periodOffset}`)).json();
-                        this.accounts = await (await fetch('/api/accounts')).json();
-                        this.loansData = await (await fetch('/api/loans')).json();
-                        this.categories = await (await fetch('/api/categories')).json();
-                        this.goals = await (await fetch('/api/goals')).json();
-                        this.overrides = await (await fetch('/api/settings/payday-overrides')).json();
+                        this.dashboard = await (await this.authFetch(`/api/dashboard?offset=${this.periodOffset}`)).json();
                         if (this.accounts.length > 0 && !this.newTx.account_id) this.newTx.account_id = this.accounts[0].id;
-                        if (this.viewMode === 'chart') this.fetchTrendData();
+                        if (this.viewMode === 'chart') this.renderChart();
                     } catch (e) { console.error(e); }
                 },
+                async fetchAccounts() { if(this.isLoggedIn) this.accounts = await (await this.authFetch('/api/accounts')).json(); },
+                async fetchLoans() { if(this.isLoggedIn) this.loansData = await (await this.authFetch('/api/loans')).json(); },
+                async fetchGoals() { if(this.isLoggedIn) this.goals = await (await this.authFetch('/api/goals')).json(); },
+                async fetchCategories() { if(this.isLoggedIn) this.categories = await (await this.authFetch('/api/categories')).json(); },
+                async fetchOverrides() { if(this.isLoggedIn) this.overrides = await (await this.authFetch('/api/settings/payday-overrides')).json(); },
                 
-                async fetchTrendData() { try { this.trendData = await (await fetch('/api/stats/trend')).json(); setTimeout(this.renderTrendChart, 100); } catch(e) { console.error(e); } },
-
-                renderTrendChart() {
+                async renderChart() {
                     const ctx = document.getElementById('trendChart');
                     if (!ctx) return;
+                    const trendData = await (await this.authFetch('/api/stats/trend')).json();
                     if (this.trendChartInstance) this.trendChartInstance.destroy();
                     this.trendChartInstance = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            labels: this.trendData.map(d => d.label),
+                            labels: trendData.map(d => d.label),
                             datasets: [
-                                { label: 'Przychody', data: this.trendData.map(d => d.income), borderColor: '#4ade80', backgroundColor: 'rgba(74, 222, 128, 0.1)', tension: 0.4, fill: true },
-                                { label: 'Wydatki', data: this.trendData.map(d => d.expense), borderColor: '#f87171', backgroundColor: 'rgba(248, 113, 113, 0.1)', tension: 0.4, fill: true }
+                                { label: 'Przychody', data: trendData.map(d => d.income), borderColor: '#4ade80', backgroundColor: 'rgba(74, 222, 128, 0.1)', tension: 0.4, fill: true },
+                                { label: 'Wydatki', data: trendData.map(d => d.expense), borderColor: '#f87171', backgroundColor: 'rgba(248, 113, 113, 0.1)', tension: 0.4, fill: true }
                             ]
                         },
                         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } } }
@@ -387,7 +481,7 @@
 
                 changePeriod(delta) { this.transitionName = delta > 0 ? 'slide-next' : 'slide-prev'; this.periodOffset += delta; this.fetchData(); },
                 detectCategory() { if(this.editingTxId) return; const desc = this.newTx.description.toLowerCase(); if (desc.length < 3) return; const match = this.dashboard.recent_transactions.find(tx => tx.desc.toLowerCase().includes(desc) && tx.category !== '-' && tx.category !== 'Transfer'); if (match) this.newTx.category_name = match.category; },
-                editTx(tx) { this.editingTxId = tx.id; this.isPlanned = (tx.status === 'planowana'); this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, category_name: tx.category_name, loan_id: tx.loan_id, date: tx.date, target_account_id: tx.target_account_id }; this.currentTab = 'add'; },
+                editTx(tx) { this.editingTxId = tx.id; this.isPlanned = (tx.status === 'planowana'); this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, category_name: tx.category_name, loan_id: tx.loan_id, date: tx.date.split('T')[0], target_account_id: tx.target_account_id }; this.currentTab = 'add'; },
                 cancelEdit() { this.resetForm(); this.currentTab = 'dashboard'; },
                 resetForm() { this.editingTxId = null; this.isPlanned = false; this.newTx = { description: '', amount: '', type: 'expense', account_id: this.accounts[0]?.id, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] }; },
                 async submitTransaction() {
@@ -396,38 +490,43 @@
                     const url = this.editingTxId ? `/api/transactions/${this.editingTxId}` : '/api/transactions';
                     const method = this.editingTxId ? 'PUT' : 'POST';
                     const payload = { ...this.newTx, status: this.isPlanned ? 'planowana' : 'zrealizowana' };
-                    await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    this.resetForm(); this.currentTab = 'dashboard'; this.fetchData();
+                    await this.authFetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    this.resetForm(); this.currentTab = 'dashboard'; this.fetchData(); this.fetchAccounts();
                 },
-                async realizeTx(tx) { const payload = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: tx.date, status: 'zrealizowana' }; await fetch(`/api/transactions/${tx.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); this.fetchData(); },
-                async deleteTx(id) { if(!confirm("Usunąć transakcję?")) return; await fetch(`/api/transactions/${id}`, { method: 'DELETE' }); this.fetchData(); },
-                async deleteAccount(id) { if(!confirm("Usunąć konto i jego historię?")) return; await fetch(`/api/accounts/${id}`, { method: 'DELETE' }); this.fetchData(); },
+                async realizeTx(tx) { const payload = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: tx.date.split('T')[0], status: 'zrealizowana' }; await this.authFetch(`/api/transactions/${tx.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); this.fetchData(); this.fetchAccounts(); },
+                async deleteTx(id) { if(!confirm("Usunąć transakcję?")) return; await this.authFetch(`/api/transactions/${id}`, { method: 'DELETE' }); this.fetchData(); this.fetchAccounts(); },
+                async deleteAccount(id) { if(!confirm("Usunąć konto i jego historię?")) return; await this.authFetch(`/api/accounts/${id}`, { method: 'DELETE' }); this.fetchAccounts(); this.fetchData(); },
                 async editAccount(acc) {
                     const newName = prompt("Nazwa konta:", acc.name);
                     if(!newName) return;
                     const newBalance = prompt("Saldo:", acc.balance);
                     const isSavings = confirm("Czy to konto oszczędnościowe (do celów)?");
-                    await fetch(`/api/accounts/${acc.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName, type: acc.type, balance: parseFloat(newBalance), is_savings: isSavings }) });
-                    this.fetchData();
+                    await this.authFetch(`/api/accounts/${acc.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName, type: acc.type, balance: parseFloat(newBalance), is_savings: isSavings }) });
+                    this.fetchAccounts();
                 },
-                async submitLoan() { await fetch('/api/loans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newLoan) }); this.showAddLoan = false; this.fetchData(); },
+                async submitLoan() { await this.authFetch('/api/loans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newLoan) }); this.showAddLoan = false; this.fetchLoans(); },
                 editLoan(loan) { this.editingLoan = { ...loan, total_amount: loan.total, remaining_amount: loan.remaining, monthly_payment: loan.monthly, next_payment_date: loan.next_date }; },
-                async updateLoan() { await fetch(`/api/loans/${this.editingLoan.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.editingLoan) }); this.editingLoan = null; this.fetchData(); },
-                async createTestAccount() { const name = prompt("Nazwa konta:"); if(name) { await fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, type: "bank", balance: 0, is_savings: false }) }); this.fetchData(); } },
-                async addOverride() { await fetch('/api/settings/payday-overrides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newOverride) }); this.fetchData(); },
-                async deleteOverride(id) { if(!confirm("Usunąć wyjątek?")) return; await fetch(`/api/settings/payday-overrides/${id}`, { method: 'DELETE' }); this.fetchData(); },
-                async addCategory() { if(!this.newCategoryName) return; await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: this.newCategoryName }) }); this.newCategoryName = ''; this.fetchData(); },
-                async deleteCategory(id) { if(!confirm("Usunąć kategorię?")) return; await fetch(`/api/categories/${id}`, { method: 'DELETE' }); this.fetchData(); },
+                async updateLoan() { await this.authFetch(`/api/loans/${this.editingLoan.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.editingLoan) }); this.editingLoan = null; this.fetchLoans(); },
+                async createTestAccount() { const name = prompt("Nazwa konta:"); if(name) { await this.authFetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, type: "bank", balance: 0, is_savings: false }) }); this.fetchAccounts(); } },
+                async addOverride() { await this.authFetch('/api/settings/payday-overrides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newOverride) }); this.fetchOverrides(); },
+                async deleteOverride(id) { if(!confirm("Usunąć wyjątek?")) return; await this.authFetch(`/api/settings/payday-overrides/${id}`, { method: 'DELETE' }); this.fetchOverrides(); },
+                async addCategory() { if(!this.newCategoryName) return; await this.authFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: this.newCategoryName }) }); this.newCategoryName = ''; this.fetchCategories(); },
+                async deleteCategory(id) { if(!confirm("Usunąć kategorię?")) return; await this.authFetch(`/api/categories/${id}`, { method: 'DELETE' }); this.fetchCategories(); },
                 
                 // CELE
-                async submitGoal() { await fetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newGoal) }); this.showAddGoal = false; this.fetchData(); },
-                async deleteGoal(id) { if(!confirm("Usunąć cel?")) return; await fetch(`/api/goals/${id}`, { method: 'DELETE' }); this.fetchData(); },
+                async submitGoal() { await this.authFetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newGoal) }); this.showAddGoal = false; this.fetchGoals(); },
+                async deleteGoal(id) { if(!confirm("Usunąć cel?")) return; await this.authFetch(`/api/goals/${id}`, { method: 'DELETE' }); this.fetchGoals(); },
                 openFundGoal(goal) { this.fundingGoal = goal; this.fundData = { source_account_id: this.savingsAccounts[0]?.id, amount: '' }; },
-                async submitFundGoal() { await fetch(`/api/goals/${this.fundingGoal.id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.fundData) }); this.fundingGoal = null; this.fetchData(); },
+                async submitFundGoal() { await this.authFetch(`/api/goals/${this.fundingGoal.id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.fundData) }); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); },
                 openTransferGoal(goal) { this.transferingGoal = goal; this.transferData = { target_goal_id: null, amount: '' }; },
-                async submitTransferGoal() { await fetch(`/api/goals/${this.transferingGoal.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.transferData) }); this.transferingGoal = null; this.fetchData(); }
+                async submitTransferGoal() { await this.authFetch(`/api/goals/${this.transferingGoal.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.transferData) }); this.transferingGoal = null; this.fetchGoals(); }
             },
-            mounted() { this.fetchData(); }
+            mounted() {
+                if (this.token) {
+                    this.isLoggedIn = true;
+                    this.refreshAllData();
+                }
+            }
         }).mount('#app')
     </script>
 </body>
