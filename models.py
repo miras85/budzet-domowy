@@ -32,6 +32,8 @@ class Goal(Base):
     current_amount = Column(DECIMAL(10, 2), default=0.0)
     deadline = Column(Date)
     is_archived = Column(Boolean, default=False)
+    # NOWE POLE:
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
 class Transaction(Base):
     __tablename__ = "transactions"

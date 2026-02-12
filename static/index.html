@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+    
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; -webkit-tap-highlight-color: transparent; overflow: hidden; }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
@@ -42,6 +43,36 @@
         .fab-container { position: absolute; left: 50%; top: -25px; transform: translateX(-50%); }
         .fab-btn { width: 56px; height: 56px; border-radius: 50%; background: #2563eb; color: white; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); border: 4px solid #0f172a; transition: transform 0.1s; cursor: pointer; }
         .fab-btn:active { transform: scale(0.95); }
+        
+        /* PANCERNA NAPRAWA KALENDARZA */
+                input[type="date"] {
+                    position: relative;
+                    padding-right: 40px; /* Miejsce na ikonę */
+                }
+
+                /* Ukrywamy domyślną, kapryśną ikonę systemową, ale zostawiamy ją klikalną */
+                input[type="date"]::-webkit-calendar-picker-indicator {
+                    background: transparent;
+                    bottom: 0;
+                    color: transparent;
+                    cursor: pointer;
+                    height: auto;
+                    left: 0;
+                    position: absolute;
+                    right: 0;
+                    top: 0;
+                    width: auto;
+                    z-index: 10;
+                }
+
+                /* Wstawiamy własną, białą ikonę jako tło pola */
+                input[type="date"] {
+                    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>');
+                    background-repeat: no-repeat;
+                    background-position: right 12px center; /* 12px od prawej krawędzi */
+                    background-size: 20px;
+                }
+        
     </style>
 </head>
 <body>
@@ -185,28 +216,53 @@
             </div>
 
             <!-- CELE -->
-            <div v-if="currentTab === 'goals'" class="px-6">
-                <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Cele Oszczędnościowe</h2><button @click="showAddGoal = !showAddGoal" class="text-blue-400 text-sm font-bold">{{ showAddGoal ? 'Anuluj' : '+ Dodaj' }}</button></div>
-                <div v-if="showAddGoal" class="glass-panel p-4 rounded-2xl mb-6">
-                    <div class="space-y-3">
-                        <input v-model="newGoal.name" placeholder="Nazwa celu" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                        <input v-model="newGoal.target_amount" type="number" placeholder="Kwota docelowa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                        <input v-model="newGoal.deadline" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                        <button @click="submitGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Utwórz Cel</button>
-                    </div>
-                </div>
-                <div class="space-y-4">
-                    <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-purple-500">
-                        <div class="flex justify-between items-start mb-2">
-                            <div><div class="font-bold text-lg text-white">{{ goal.name }}</div><div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div></div>
-                            <div class="text-right"><div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div><div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div></div>
-                        </div>
-                        <div class="w-full bg-slate-700 h-2 rounded-full mb-3 overflow-hidden"><div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div></div>
-                        <div class="flex gap-2 mt-3"><button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Zasil</button><button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Przenieś</button><button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold">×</button></div>
-                    </div>
-                </div>
-            </div>
+                        <div v-if="currentTab === 'goals'" class="px-6">
+                            <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Cele Oszczędnościowe</h2><button @click="showAddGoal = !showAddGoal" class="text-blue-400 text-sm font-bold">{{ showAddGoal ? 'Anuluj' : '+ Dodaj' }}</button></div>
+                            
+                            <!-- FORMULARZ DODAWANIA CELU -->
+                            <div v-if="showAddGoal" class="glass-panel p-4 rounded-2xl mb-6">
+                                <div class="space-y-3">
+                                    <input v-model="newGoal.name" placeholder="Nazwa celu" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
+                                    
+                                    <!-- Wybór konta oszczędnościowego -->
+                                                            <div>
+                                                                <label class="text-xs text-slate-400 uppercase font-bold ml-1">Przypisz do konta</label>
+                                                                <select v-model="newGoal.account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none mt-1">
+                                                                    <option :value="null" disabled>-- Wybierz konto --</option>
+                                                                    <option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option>
+                                                                </select>
+                                                            </div>
 
+                                    <input v-model="newGoal.target_amount" type="number" placeholder="Kwota docelowa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
+                                    
+                                    <!-- Poprawiona data -->
+                                    <div>
+                                        <label class="text-xs text-slate-400 uppercase font-bold ml-1">Termin realizacji</label>
+                                        <input v-model="newGoal.deadline" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none mt-1">
+                                    </div>
+
+                                    <button @click="submitGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm mt-2">Utwórz Cel</button>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-purple-500">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div>
+                                            <div class="font-bold text-lg text-white">{{ goal.name }}</div>
+                                            <div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div>
+                                            <!-- Pokazujemy przypisane konto -->
+                                            <div class="text-[10px] text-blue-400 mt-1 font-bold" v-if="getAccountName(goal.account_id)">
+                                                🏦 {{ getAccountName(goal.account_id) }}
+                                            </div>
+                                        </div>
+                                        <div class="text-right"><div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div><div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div></div>
+                                    </div>
+                                    <div class="w-full bg-slate-700 h-2 rounded-full mb-3 overflow-hidden"><div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div></div>
+                                    <div class="flex gap-2 mt-3"><button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Zasil</button><button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700">Przenieś</button><button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold">×</button></div>
+                                </div>
+                            </div>
+                        </div>
             <!-- DODAWANIE -->
             <div v-if="currentTab === 'add'" class="px-6 pt-6 pb-40">
                 <h2 class="text-xl font-bold text-white mb-6">{{ editingTxId ? 'Edytuj operację' : 'Nowa operacja' }}</h2>
@@ -274,7 +330,34 @@
         <!-- MODALE -->
         <div v-if="selectedCategory" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="selectedCategory = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5 max-h-[80vh] overflow-y-auto"><div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-white">{{ selectedCategory.name }}</h3><button @click="selectedCategory = null" class="text-slate-400 text-2xl">&times;</button></div><div class="space-y-3"><div v-for="tx in selectedCategory.transactions" :key="tx.id" class="flex justify-between items-center border-b border-slate-700 pb-2"><div><div class="text-sm text-slate-200">{{ tx.desc }}</div><div class="text-xs text-slate-500">{{ tx.date }}</div></div><div :class="tx.type === 'expense' ? 'text-red-400' : 'text-green-400'" class="font-bold text-sm">{{ formatMoney(tx.amount) }}</div></div></div></div></div>
         <div v-if="editingLoan" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="editingLoan = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Edytuj Kredyt</h3><div class="space-y-3"><input v-model="editingLoan.name" placeholder="Nazwa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.next_payment_date" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="updateLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz zmiany</button></div></div></div>
-        <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Z konta oszczędnościowego</label><select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option></select><input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil</button></div></div></div>
+        <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null">
+                    <div class="glass-panel w-full max-w-md rounded-2xl p-5">
+                        <h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3>
+                        <div class="space-y-3">
+                            <!-- Wybór źródła (Teraz wszystkie konta, nie tylko oszczędnościowe) -->
+                            <div>
+                                <label class="text-xs text-slate-400 uppercase font-bold">Z konta</label>
+                                <select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
+                                    <option v-for="acc in accounts" :value="acc.id">
+                                        {{ acc.name }} ({{ formatMoney(acc.balance) }}) {{ acc.is_savings ? '🐷' : '💳' }}
+                                    </option>
+                                </select>
+                            </div>
+
+                            <!-- Dodatkowe pole: Jeśli wybrano ROR, zapytaj gdzie przelać -->
+                            <div v-if="isSourceROR" class="bg-blue-900/20 p-3 rounded-xl border border-blue-500/30">
+                                <label class="text-xs text-blue-300 uppercase font-bold mb-1 block">Automatyczny transfer na:</label>
+                                <select v-model="fundData.target_savings_id" class="input-dark w-full max-w-full p-2 rounded-lg text-sm outline-none bg-slate-900 appearance-none">
+                                    <option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }}</option>
+                                </select>
+                                <div class="text-[10px] text-blue-400 mt-1">System automatycznie przeleje środki na to konto oszczędnościowe.</div>
+                            </div>
+
+                            <input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
+                            <button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil Cel</button>
+                        </div>
+                    </div>
+                </div>
         <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
 
         <!-- NAV -->
@@ -370,8 +453,13 @@
                     overrides: [],
                     newTx: { description: '', amount: '', type: 'expense', account_id: null, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] },
                     newLoan: { name: '', total_amount: '', remaining_amount: '', monthly_payment: '', next_payment_date: new Date().toISOString().split('T')[0] },
-                    newGoal: { name: '', target_amount: '', deadline: '' },
-                    fundData: { source_account_id: null, amount: '' },
+                    newGoal: {
+                        name: '',
+                        target_amount: '',
+                        deadline: new Date().toISOString().split('T')[0], // Ustawia "dzisiaj"
+                        account_id: null
+                    },
+                    fundData: { source_account_id: null, target_savings_id: null, amount: '' },
                     transferData: { target_goal_id: null, amount: '' },
                     newOverride: { year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: 25 }
                 }
@@ -386,6 +474,11 @@
                     if (this.filterStatus !== 'all') txs = txs.filter(tx => tx.status === this.filterStatus);
                     if (this.filterAccount) txs = txs.filter(tx => tx.account_id === this.filterAccount || tx.target_account_id === this.filterAccount);
                     return txs;
+                },
+                isSourceROR() {
+                    if (!this.fundData.source_account_id) return false;
+                    const acc = this.accounts.find(a => a.id === this.fundData.source_account_id);
+                    return acc && !acc.is_savings;
                 },
                 groupedCategories() {
                                     // ZMIANA: Używamy filteredTransactions zamiast dashboard.recent_transactions
@@ -434,6 +527,10 @@
                     const res = await fetch(url, options);
                     if (res.status === 401) { this.logout(); throw new Error("Unauthorized"); }
                     return res;
+                },
+                getAccountName(id) {
+                    const acc = this.accounts.find(a => a.id === id);
+                    return acc ? acc.name : '';
                 },
                 refreshAllData() { this.fetchData(); this.fetchAccounts(); this.fetchLoans(); this.fetchGoals(); this.fetchCategories(); this.fetchOverrides(); },
                 
@@ -542,9 +639,28 @@
                 async deleteCategory(id) { if(!confirm("Usunąć kategorię?")) return; await this.authFetch(`/api/categories/${id}`, { method: 'DELETE' }); this.fetchCategories(); },
                 
                 // CELE
-                async submitGoal() { await this.authFetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newGoal) }); this.showAddGoal = false; this.fetchGoals(); },
+                async submitGoal() {
+                    if (!this.newGoal.account_id) return alert("Wybierz konto oszczędnościowe dla tego celu!");
+                    await this.authFetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newGoal) });
+                    this.showAddGoal = false;
+                    this.fetchGoals();
+                    // Reset formularza
+                    this.newGoal = { name: '', target_amount: '', deadline: '', account_id: this.savingsAccounts[0]?.id };
+                },
                 async deleteGoal(id) { if(!confirm("Usunąć cel?")) return; await this.authFetch(`/api/goals/${id}`, { method: 'DELETE' }); this.fetchGoals(); },
-                openFundGoal(goal) { this.fundingGoal = goal; this.fundData = { source_account_id: this.savingsAccounts[0]?.id, amount: '' }; },
+                openFundGoal(goal) {
+                    this.fundingGoal = goal;
+                    // Domyślnie wybierz pierwsze konto z listy
+                    const defaultSource = this.accounts[0]?.id;
+                    // Domyślnie wybierz pierwsze konto oszczędnościowe jako cel transferu
+                    const defaultTarget = this.savingsAccounts[0]?.id;
+                    
+                    this.fundData = {
+                        source_account_id: defaultSource,
+                        target_savings_id: defaultTarget,
+                        amount: ''
+                    };
+                },
                 async submitFundGoal() { await this.authFetch(`/api/goals/${this.fundingGoal.id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.fundData) }); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); },
                 openTransferGoal(goal) { this.transferingGoal = goal; this.transferData = { target_goal_id: null, amount: '' }; },
                 async submitTransferGoal() { await this.authFetch(`/api/goals/${this.transferingGoal.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.transferData) }); this.transferingGoal = null; this.fetchGoals(); }

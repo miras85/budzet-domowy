@@ -93,10 +93,12 @@ class GoalCreate(BaseModel):
     name: str
     target_amount: float
     deadline: date
+    account_id: int  # Nowe wymagane pole
 
 class GoalFund(BaseModel):
     amount: float
     source_account_id: int
+    target_savings_id: Optional[int] = None
 
 class GoalTransfer(BaseModel):
     amount: float
@@ -324,14 +326,56 @@ def delete_transaction(tx_id: int, db: Session = Depends(database.get_db), curre
 @app.get("/api/goals")
 def get_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): return db.query(models.Goal).filter(models.Goal.is_archived == False).all()
 @app.post("/api/goals")
-def create_goal(goal: GoalCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)): db.add(models.Goal(**goal.dict())); db.commit(); return {"status": "ok"}
+def create_goal(goal: GoalCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    # Sprawdź czy konto istnieje i czy jest oszczędnościowe
+    acc = db.query(models.Account).filter(models.Account.id == goal.account_id).first()
+    if not acc or not acc.is_savings:
+        raise HTTPException(status_code=400, detail="Cel musi być przypisany do konta oszczędnościowego")
+    
+    db.add(models.Goal(**goal.dict()))
+    db.commit()
+    return {"status": "ok"}
 @app.post("/api/goals/{goal_id}/fund")
 def fund_goal(goal_id: int, fund: GoalFund, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
     if not goal: raise HTTPException(status_code=404)
-    acc = db.query(models.Account).filter(models.Account.id == fund.source_account_id).first()
-    if not acc or not acc.is_savings: raise HTTPException(status_code=400, detail="Można zasilać tylko z kont oszczędnościowych")
-    goal.current_amount = float(goal.current_amount) + fund.amount; db.commit(); return {"status": "funded"}
+    
+    source_acc = db.query(models.Account).filter(models.Account.id == fund.source_account_id).first()
+    if not source_acc: raise HTTPException(status_code=404, detail="Brak konta źródłowego")
+
+    # SCENARIUSZ 1: Przelew z ROR (Automatyczny Transfer)
+    if not source_acc.is_savings:
+        if not fund.target_savings_id:
+            raise HTTPException(status_code=400, detail="Wymagane wskazanie konta oszczędnościowego dla transferu")
+        
+        target_acc = db.query(models.Account).filter(models.Account.id == fund.target_savings_id).first()
+        if not target_acc or not target_acc.is_savings:
+            raise HTTPException(status_code=400, detail="Konto docelowe musi być oszczędnościowe")
+
+        # 1. Tworzymy transakcję transferu
+        transfer_tx = models.Transaction(
+            amount=fund.amount,
+            description=f"Zasilenie celu: {goal.name}",
+            date=date.today(),
+            type="transfer",
+            account_id=source_acc.id,
+            target_account_id=target_acc.id,
+            status="zrealizowana"
+        )
+        db.add(transfer_tx)
+        
+        # 2. Aktualizujemy salda (ROR - kwota, Oszcz + kwota)
+        update_balance(db, source_acc.id, fund.amount, "transfer", target_acc.id, is_reversal=False)
+    
+    # SCENARIUSZ 2: Pieniądze już są na koncie oszczędnościowym (tylko przypisujemy do celu)
+    # (W tym przypadku zakładamy, że środki już tam są, więc nie robimy transferu, tylko aktualizujemy cel)
+    
+    # 3. Aktualizujemy cel
+    goal.current_amount = float(goal.current_amount) + fund.amount
+    db.commit()
+    
+    return {"status": "funded"}
+    
 @app.post("/api/goals/{goal_id}/transfer")
 def transfer_goal_funds(goal_id: int, transfer: GoalTransfer, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     source = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
