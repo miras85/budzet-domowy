@@ -1,12 +1,17 @@
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from dotenv import load_dotenv
 
-# KONFIGURACJA BEZPIECZEŃSTWA
-SECRET_KEY = "zmien_mnie_na_bardzo_dlugi_losowy_ciag_znakow_dla_bezpieczenstwa"
+# Ładujemy zmienne
+load_dotenv()
+
+# Pobieramy sekret z .env
+SECRET_KEY = os.getenv("SECRET_KEY", "domyslny_klucz_tylko_dla_dev")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # Sesja ważna 30 dni
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 dni
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

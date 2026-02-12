@@ -1,0 +1,133 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #0f172a;
+    color: #f8fafc;
+    -webkit-tap-highlight-color: transparent;
+    overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 0px; background: transparent; }
+
+/* KOMPONENTY UI */
+.glass-panel {
+    background: rgba(30, 41, 59, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.gradient-card {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+}
+
+.input-dark {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: white;
+    transition: all 0.2s;
+}
+
+.input-dark:focus {
+    border-color: #60a5fa;
+    outline: none;
+}
+
+/* BEZPIECZNE STREFY (iPhone) */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+/* ANIMACJE PRZEJŚCIA */
+.slide-next-enter-active, .slide-next-leave-active,
+.slide-prev-enter-active, .slide-prev-leave-active {
+    transition: all 0.25s ease-out;
+}
+.slide-next-enter-from { transform: translateX(50px); opacity: 0; }
+.slide-next-leave-to { transform: translateX(-50px); opacity: 0; }
+.slide-prev-enter-from { transform: translateX(-50px); opacity: 0; }
+.slide-prev-leave-to { transform: translateX(50px); opacity: 0; }
+
+/* NAWIGACJA */
+.nav-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+    padding: 0 10px;
+    position: relative;
+}
+.nav-group {
+    display: flex;
+    gap: 20px;
+    width: 40%;
+    justify-content: space-around;
+}
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    transition: color 0.2s;
+    width: 50px;
+    cursor: pointer;
+}
+.nav-item.active { color: #60a5fa; }
+.nav-icon { margin-bottom: 2px; }
+.nav-label {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+/* PRZYCISK FAB (+) */
+.fab-container {
+    position: absolute;
+    left: 50%;
+    top: -25px;
+    transform: translateX(-50%);
+}
+.fab-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+    border: 4px solid #0f172a;
+    transition: transform 0.1s;
+    cursor: pointer;
+}
+.fab-btn:active { transform: scale(0.95); }
+
+/* NAPRAWA KALENDARZA (Biała ikona) */
+input[type="date"] {
+    position: relative;
+    padding-right: 40px;
+    color-scheme: dark;
+    min-height: 52px;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+    background: transparent;
+    bottom: 0;
+    color: transparent;
+    cursor: pointer;
+    height: auto;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: auto;
+    z-index: 10;
+}
+input[type="date"] {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>');
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 20px;
+}
