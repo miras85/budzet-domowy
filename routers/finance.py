@@ -15,18 +15,47 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), curre
         result = db.query(func.sum(models.Transaction.amount)).filter(query_filter).scalar()
         return float(result) if result is not None else 0.0
 
+    # 1. Całkowite saldo wszystkich kont
     raw_total = db.query(func.sum(models.Account.balance)).scalar()
     total_balance = float(raw_total) if raw_total is not None else 0.0
     
+    # 2. Saldo ROR (Dostępne środki na życie)
+    raw_ror = db.query(func.sum(models.Account.balance)).filter(models.Account.is_savings == False).scalar()
+    disposable_balance = float(raw_ror) if raw_ror is not None else 0.0
+
+    # Całkowity dług
     raw_debt = db.query(func.sum(models.Loan.remaining_amount)).scalar()
     total_debt = float(raw_debt) if raw_debt is not None else 0.0
     
+    # Przychody i Wydatki
     inc_realized = get_sum((models.Transaction.type == 'income') & (models.Transaction.status == 'zrealizowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
     inc_planned = get_sum((models.Transaction.type == 'income') & (models.Transaction.status == 'planowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
     
     exp_realized = get_sum((models.Transaction.type == 'expense') & (models.Transaction.status == 'zrealizowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
     exp_planned = get_sum((models.Transaction.type == 'expense') & (models.Transaction.status == 'planowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
 
+    # Prognoza ROR
+    forecast_ror = disposable_balance + inc_planned - exp_planned
+
+    # Transfery na oszczędności
+    period_transfers = db.query(models.Transaction).options(joinedload(models.Transaction.account), joinedload(models.Transaction.target_account)).filter(
+        models.Transaction.type == 'transfer',
+        models.Transaction.status == 'zrealizowana',
+        models.Transaction.date >= start_date,
+        models.Transaction.date <= end_date
+    ).all()
+    
+    savings_realized = 0.0
+    for t in period_transfers:
+        if t.account and not t.account.is_savings and t.target_account and t.target_account.is_savings:
+            savings_realized += float(t.amount)
+
+    # Wskaźnik oszczędności
+    savings_rate = 0.0
+    if inc_realized > 0:
+        savings_rate = ((inc_realized - exp_realized) / inc_realized) * 100
+
+    # Cele (proste podsumowanie do dashboardu)
     goals = db.query(models.Goal).filter(models.Goal.is_archived == False).all()
     goals_monthly_need = 0.0
     goals_total_saved = 0.0
@@ -45,9 +74,29 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), curre
                 cycles_left += 1
                 check_offset += 1
                 if cycles_left > 120: break
-            goals_monthly_need += (remaining / cycles_left)
+            
+            # Logika identyczna jak w get_goals
+            goals_on_acc = db.query(func.count(models.Goal.id)).filter(models.Goal.account_id == g.account_id).scalar()
+            query = db.query(func.sum(models.Transaction.amount)).filter(
+                models.Transaction.type == 'transfer',
+                models.Transaction.target_account_id == g.account_id,
+                models.Transaction.date >= start_date,
+                models.Transaction.date <= end_date
+            )
+            if goals_on_acc > 1:
+                query = query.filter(models.Transaction.description.ilike(f"%{g.name}%"))
+            
+            txs = query.scalar()
+            paid_this_cycle = float(txs) if txs else 0.0
+            
+            # WZÓR: (Pozostało + Wpłacono) / Cykle - Wpłacono
+            total_remaining_for_period = remaining + paid_this_cycle
+            base_need = total_remaining_for_period / cycles_left
+            actual_need = base_need - paid_this_cycle
+            
+            if actual_need < 0: actual_need = 0
+            goals_monthly_need += actual_need
 
-    # ZMIANA: Sortowanie najpierw po dacie (malejąco), potem po ID (malejąco)
     recent = db.query(models.Transaction).options(joinedload(models.Transaction.category), joinedload(models.Transaction.loan)).filter(models.Transaction.date >= start_date, models.Transaction.date <= end_date).order_by(models.Transaction.date.desc(), models.Transaction.id.desc()).all()
     
     tx_list = []
@@ -64,11 +113,21 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), curre
         })
 
     return {
-        "total_balance": total_balance, "total_debt": total_debt,
-        "monthly_income_realized": inc_realized, "monthly_income_forecast": inc_realized + inc_planned,
-        "monthly_expenses_realized": exp_realized, "monthly_expenses_forecast": exp_realized + exp_planned,
-        "goals_monthly_need": goals_monthly_need, "goals_total_saved": goals_total_saved,
-        "recent_transactions": tx_list, "period_start": str(start_date), "period_end": str(end_date)
+        "total_balance": total_balance,
+        "disposable_balance": disposable_balance,
+        "forecast_ror": forecast_ror,
+        "savings_realized": savings_realized,
+        "savings_rate": savings_rate,
+        "total_debt": total_debt,
+        "monthly_income_realized": inc_realized,
+        "monthly_income_forecast": inc_realized + inc_planned,
+        "monthly_expenses_realized": exp_realized,
+        "monthly_expenses_forecast": exp_realized + exp_planned,
+        "goals_monthly_need": goals_monthly_need,
+        "goals_total_saved": goals_total_saved,
+        "recent_transactions": tx_list,
+        "period_start": str(start_date),
+        "period_end": str(end_date)
     }
 
 @router.get("/stats/trend")
@@ -161,10 +220,13 @@ def delete_transaction(tx_id: int, db: Session = Depends(database.get_db), curre
 @router.get("/goals")
 def get_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     goals = db.query(models.Goal).filter(models.Goal.is_archived == False).all()
+    start_date, end_date = utils.get_billing_period(db, 0)
+    
     result = []
     for g in goals:
         goal_data = {"id": g.id, "name": g.name, "target_amount": float(g.target_amount), "current_amount": float(g.current_amount), "deadline": str(g.deadline), "account_id": g.account_id, "monthly_need": 0.0}
         remaining = float(g.target_amount) - float(g.current_amount)
+        
         if remaining > 0:
             cycles_left = 1; check_offset = 0
             while True:
@@ -172,7 +234,37 @@ def get_goals(db: Session = Depends(database.get_db), current_user: models.User 
                 if cycle_end >= g.deadline: break
                 cycles_left += 1; check_offset += 1
                 if cycles_left > 120: break
-            goal_data["monthly_need"] = remaining / cycles_left
+            
+            # NOWA LOGIKA:
+            # 1. Sprawdzamy ile celów jest przypisanych do tego konta
+            goals_on_acc = db.query(func.count(models.Goal.id)).filter(models.Goal.account_id == g.account_id).scalar()
+            
+            # 2. Budujemy zapytanie o wpłaty (transfery na to konto w tym okresie)
+            query = db.query(func.sum(models.Transaction.amount)).filter(
+                models.Transaction.type == 'transfer',
+                models.Transaction.target_account_id == g.account_id,
+                models.Transaction.date >= start_date,
+                models.Transaction.date <= end_date
+            )
+            
+            # 3. Jeśli na koncie jest WIĘCEJ niż 1 cel, musimy filtrować po nazwie
+            if goals_on_acc > 1:
+                query = query.filter(models.Transaction.description.ilike(f"%{g.name}%"))
+            # Jeśli jest tylko 1 cel, bierzemy WSZYSTKIE transfery na to konto jako wpłatę na ten cel
+            
+            txs = query.scalar()
+            paid_this_cycle = float(txs) if txs else 0.0
+            
+            # 4. Obliczenia (Wzór: (Pozostało + Wpłacono) / Cykle - Wpłacono)
+            total_remaining_for_period = remaining + paid_this_cycle
+            base_need = total_remaining_for_period / cycles_left
+            actual_need = base_need - paid_this_cycle
+            
+            if actual_need < 0:
+                actual_need = 0.0
+                
+            goal_data["monthly_need"] = actual_need
+            
         result.append(goal_data)
     return result
 
@@ -188,13 +280,26 @@ def fund_goal(goal_id: int, fund: schemas.GoalFund, db: Session = Depends(databa
     if not goal: raise HTTPException(status_code=404)
     source_acc = db.query(models.Account).filter(models.Account.id == fund.source_account_id).first()
     if not source_acc: raise HTTPException(status_code=404, detail="Brak konta źródłowego")
+    
+    # Walidacja dostępnych środków (jeśli źródło to konto oszczędnościowe)
+    if source_acc.is_savings:
+        reserved = db.query(func.sum(models.Goal.current_amount)).filter(models.Goal.account_id == source_acc.id).scalar()
+        reserved_amount = float(reserved) if reserved else 0.0
+        available = float(source_acc.balance) - reserved_amount
+        
+        if fund.amount > available:
+            raise HTTPException(status_code=400, detail=f"Brak wolnych środków. Dostępne: {available:.2f} zł")
+
+    # Jeśli źródło to ROR, a cel to Oszczędnościowe -> Transfer
     if not source_acc.is_savings:
         if not fund.target_savings_id: raise HTTPException(status_code=400, detail="Wymagane wskazanie konta oszczędnościowego")
         target_acc = db.query(models.Account).filter(models.Account.id == fund.target_savings_id).first()
         if not target_acc or not target_acc.is_savings: raise HTTPException(status_code=400, detail="Konto docelowe musi być oszczędnościowe")
+        
         transfer_tx = models.Transaction(amount=fund.amount, description=f"Zasilenie celu: {goal.name}", date=date.today(), type="transfer", account_id=source_acc.id, target_account_id=target_acc.id, status="zrealizowana")
         db.add(transfer_tx)
         utils.update_balance(db, source_acc.id, fund.amount, "transfer", target_acc.id, is_reversal=False)
+    
     goal.current_amount = float(goal.current_amount) + fund.amount; db.commit(); return {"status": "funded"}
 
 @router.post("/goals/{goal_id}/transfer")
@@ -259,8 +364,28 @@ def update_account(account_id: int, acc: schemas.AccountUpdate, db: Session = De
     db_acc = db.query(models.Account).filter(models.Account.id == account_id).first()
     if not db_acc: raise HTTPException(status_code=404)
     db_acc.name = acc.name; db_acc.type = acc.type; db_acc.balance = acc.balance; db_acc.is_savings = acc.is_savings; db.commit(); return {"status": "updated"}
+
+# NOWE: Zwracanie dostępnego salda (po odjęciu celów)
 @router.get("/accounts")
-def get_accounts(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): return db.query(models.Account).all()
+def get_accounts(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    accounts = db.query(models.Account).all()
+    result = []
+    for acc in accounts:
+        reserved = 0.0
+        if acc.is_savings:
+            res_val = db.query(func.sum(models.Goal.current_amount)).filter(models.Goal.account_id == acc.id).scalar()
+            reserved = float(res_val) if res_val else 0.0
+        
+        result.append({
+            "id": acc.id,
+            "name": acc.name,
+            "type": acc.type,
+            "balance": float(acc.balance),
+            "is_savings": acc.is_savings,
+            "available": float(acc.balance) - reserved # NOWE POLE
+        })
+    return result
+
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Transaction).filter(models.Transaction.account_id == account_id).delete(); db.query(models.Account).filter(models.Account.id == account_id).delete(); db.commit(); return {"status": "deleted"}
 @router.post("/accounts")

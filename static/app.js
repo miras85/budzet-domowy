@@ -28,13 +28,31 @@ createApp({
             filterAccount: null,
             isPlanned: false,
             newCategoryName: '',
+            categorySearch: '',
+            showCategorySelector: false,
             
             touchStartX: 0,
             touchEndX: 0,
             trendChartInstance: null,
             trendData: [],
             
-            dashboard: { total_balance: 0, total_debt: 0, monthly_income_realized: 0, monthly_income_forecast: 0, monthly_expenses_realized: 0, monthly_expenses_forecast: 0, goals_monthly_need: 0, goals_total_saved: 0, recent_transactions: [], period_start: '', period_end: '' },
+            dashboard: {
+                total_balance: 0,
+                disposable_balance: 0,
+                forecast_ror: 0,       // NOWE
+                savings_realized: 0,
+                savings_rate: 0,
+                total_debt: 0,
+                monthly_income_realized: 0,
+                monthly_income_forecast: 0,
+                monthly_expenses_realized: 0,
+                monthly_expenses_forecast: 0,
+                goals_monthly_need: 0,
+                goals_total_saved: 0,
+                recent_transactions: [],
+                period_start: '',
+                period_end: ''
+            },
             accounts: [],
             categories: [],
             loansData: { loans: [], upcoming: [] },
@@ -62,6 +80,11 @@ createApp({
             if (this.filterStatus !== 'all') txs = txs.filter(tx => tx.status === this.filterStatus);
             if (this.filterAccount) txs = txs.filter(tx => tx.account_id === this.filterAccount || tx.target_account_id === this.filterAccount);
             return txs;
+        },
+        filteredCategories() {
+            if (!this.categorySearch) return this.categories;
+            const search = this.categorySearch.toLowerCase();
+            return this.categories.filter(c => c.name.toLowerCase().includes(search));
         },
         groupedCategories() {
             if (!this.filteredTransactions) return [];
@@ -140,7 +163,6 @@ createApp({
         handleSwipe() { if (this.currentTab !== 'dashboard') return; const diff = this.touchEndX - this.touchStartX; if (diff > 50) this.changePeriod(-1); if (diff < -50) this.changePeriod(1); },
 
         openCategoryDetails(cat) { this.selectedCategory = cat; },
-        
         editTxFromModal(tx) {
             this.selectedCategory = null;
             this.editTx(tx);
@@ -168,7 +190,6 @@ createApp({
             window.scrollTo(0,0);
         },
 
-        // --- NOWA FUNKCJA: OBSŁUGA WYBORU KREDYTU ---
         handleLoanChange() {
             if (this.newTx.loan_id) {
                 this.newTx.category_name = 'Spłata zobowiązań';
@@ -176,7 +197,6 @@ createApp({
                 this.newTx.category_name = '';
             }
         },
-        // --------------------------------------------
 
         async updateCategoryLimit(cat) {
             if (!cat.id) return alert("Nie można edytować tej kategorii (brak ID).");
@@ -214,10 +234,23 @@ createApp({
             });
         },
         changePeriod(delta) { this.transitionName = delta > 0 ? 'slide-next' : 'slide-prev'; this.periodOffset += delta; this.fetchData(); },
-        detectCategory() { if(this.editingTxId) return; const desc = this.newTx.description.toLowerCase(); if (desc.length < 3) return; const match = this.dashboard.recent_transactions.find(tx => tx.desc.toLowerCase().includes(desc) && tx.category !== '-' && tx.category !== 'Transfer'); if (match) this.newTx.category_name = match.category; },
+        detectCategory() {
+            if(this.editingTxId) return;
+            const desc = this.newTx.description.toLowerCase();
+            if (desc.length < 3) return;
+            const match = this.dashboard.recent_transactions.find(tx => tx.desc.toLowerCase().includes(desc) && tx.category !== '-' && tx.category !== 'Transfer');
+            if (match) {
+                this.newTx.category_name = match.category;
+            }
+        },
         editTx(tx) { this.editingTxId = tx.id; this.isPlanned = (tx.status === 'planowana'); this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, category_name: tx.category_name, loan_id: tx.loan_id, date: tx.date.split('T')[0], target_account_id: tx.target_account_id }; this.currentTab = 'add'; },
         cancelEdit() { this.resetForm(); this.currentTab = 'dashboard'; },
-        resetForm() { this.editingTxId = null; this.isPlanned = false; this.newTx = { description: '', amount: '', type: 'expense', account_id: this.accounts[0]?.id, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] }; },
+        resetForm() {
+            this.editingTxId = null;
+            this.isPlanned = false;
+            this.showCategorySelector = false;
+            this.newTx = { description: '', amount: '', type: 'expense', account_id: this.accounts[0]?.id, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] };
+        },
         
         async submitTransaction() {
             if(!this.newTx.account_id) return alert("Wybierz konto!");
