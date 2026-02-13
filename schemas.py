@@ -50,6 +50,17 @@ class PaydayOverrideCreate(BaseModel):
 
 class CategoryCreate(BaseModel):
     name: str
+    monthly_limit: float = 0.0
+    
+class RecurringCreate(BaseModel):
+    name: str
+    amount: float
+    day_of_month: int
+    category_name: str
+    account_id: int
+
+class RecurringExecute(BaseModel):
+    date: date
 
 class GoalCreate(BaseModel):
     name: str

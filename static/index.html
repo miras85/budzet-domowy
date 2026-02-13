@@ -4,272 +4,368 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Budżet Domowy</title>
-    
-    <!-- PWA SETUP -->
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://www.flaticon.com/free-icons/wallet">
-
-    <!-- BIBLIOTEKI -->
+    <link rel="apple-touch-icon" href="/static/icon_v2.png">
+    <link rel="icon" href="/static/icon_v2.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/style.css?v=13">
     
-    <!-- NASZ STYL -->
-    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        [v-cloak] { display: none !important; }
+        
+        /* NAPRAWA INPUTA KWOTY */
+        .big-amount-input {
+            background-color: transparent !important;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            text-align: center;
+            font-size: 3rem;
+            font-weight: 800;
+            color: white;
+            width: 100%;
+            padding: 0;
+            margin: 0;
+        }
+        .big-amount-input::placeholder { color: #475569; }
+        .big-amount-input::-webkit-outer-spin-button,
+        .big-amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+        /* NAPRAWA DATY */
+        input[type="date"] {
+            background-color: transparent;
+            color: white;
+            font-family: inherit;
+            width: 100%;
+            outline: none;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            opacity: 0.6;
+            cursor: pointer;
+        }
+
+        /* PRZEŁĄCZNIK TYPU */
+        .type-btn { transition: all 0.2s; border-radius: 10px; font-weight: 600; font-size: 0.85rem; padding: 8px 0; }
+        .active-exp { background: #ef4444; color: white; box-shadow: 0 4px 12px rgba(239,68,68,0.3); }
+        .active-inc { background: #22c55e; color: white; box-shadow: 0 4px 12px rgba(34,197,94,0.3); }
+        .active-trf { background: #3b82f6; color: white; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+        .inactive-btn { color: #64748b; hover:bg-slate-800; }
+    </style>
 </head>
 <body>
-    <div id="app" class="h-screen flex flex-col">
+    <div id="app" class="h-screen flex flex-col bg-slate-900" v-cloak>
         
-        <!-- EKRAN LOGOWANIA -->
-        <div v-if="!isLoggedIn" class="h-screen flex flex-col items-center justify-center p-6 bg-slate-900">
+        <!-- LOGOWANIE -->
+        <div v-if="!isLoggedIn" class="h-screen flex flex-col items-center justify-center p-6 z-50 relative">
             <div class="w-full max-w-sm glass-panel p-8 rounded-3xl shadow-2xl border-t border-white/10">
                 <div class="text-center mb-8">
                     <div class="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-lg shadow-blue-500/30 mb-4">🔐</div>
                     <h1 class="text-2xl font-bold text-white">Witaj z powrotem</h1>
-                    <p class="text-slate-400 text-sm mt-2">Zaloguj się do swojego budżetu</p>
                 </div>
                 <form @submit.prevent="login" class="space-y-4">
-                    <div>
-                        <label class="text-xs font-bold text-slate-400 uppercase ml-1">Login</label>
-                        <input v-model="loginForm.username" type="text" class="w-full input-dark p-3 rounded-xl mt-1" placeholder="np. admin">
-                    </div>
-                    <div>
-                        <label class="text-xs font-bold text-slate-400 uppercase ml-1">Hasło</label>
-                        <input v-model="loginForm.password" type="password" class="w-full input-dark p-3 rounded-xl mt-1" placeholder="••••••••">
-                    </div>
-                    <div v-if="loginError" class="text-red-400 text-xs text-center font-bold bg-red-900/20 p-2 rounded-lg">{{ loginError }}</div>
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-95 mt-4">Zaloguj się</button>
+                    <input v-model="loginForm.username" type="text" class="w-full input-dark p-3 rounded-xl" placeholder="Login">
+                    <input v-model="loginForm.password" type="password" class="w-full input-dark p-3 rounded-xl" placeholder="Hasło">
+                    <div v-if="loginError" class="text-red-400 text-xs text-center font-bold">{{ loginError }}</div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl shadow-lg mt-4">Zaloguj się</button>
                 </form>
             </div>
         </div>
 
-        <!-- GŁÓWNY OBSZAR TREŚCI (TYLKO DLA ZALOGOWANYCH) -->
-        <div v-else class="flex-1 overflow-y-auto overflow-x-hidden pb-24 safe-top relative"
-             @touchstart="handleTouchStart"
-             @touchend="handleTouchEnd">
-            
-            <!-- HEADER -->
-            <div class="p-6 pb-2 flex justify-between items-center">
-                <h1 class="text-xl font-bold text-slate-100">Mój Portfel</h1>
-                <div class="flex gap-2">
-                    <button @click="currentTab = 'settings'" class="text-slate-400 hover:text-white p-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.581-.495.644-.869l.214-1.281z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    </button>
-                    <button @click="logout" class="text-slate-400 hover:text-red-400 p-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg>
-                    </button>
-                </div>
-            </div>
-
-            <!-- DASHBOARD -->
-            <div v-if="currentTab === 'dashboard'">
-                <div class="px-6">
-                    <div class="flex items-center justify-center gap-3 bg-slate-800/50 rounded-xl p-1.5 border border-slate-700/50 mb-4">
-                        <button @click="changePeriod(-1)" class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white transition-all active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg></button>
-                        <div class="flex flex-col items-center px-2 cursor-pointer min-w-[90px]" @click="periodOffset = 0; fetchData()"><span class="text-xs font-bold text-slate-200 whitespace-nowrap">{{ formatDateShort(dashboard.period_start) }} - {{ formatDateShort(dashboard.period_end) }}</span><span v-if="periodOffset !== 0" class="text-[10px] text-blue-400 font-bold tracking-wider mt-0.5">WRÓĆ DO DZIŚ</span></div>
-                        <button @click="changePeriod(1)" class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white transition-all active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg></button>
-                    </div>
-                    <div class="gradient-card rounded-3xl p-6 shadow-2xl shadow-blue-900/20 relative overflow-hidden mb-4">
-                        <div class="relative z-10">
-                            <div class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Saldo Miesięczne (Cashflow)</div>
-                            <div class="flex justify-between items-center">
-                                <div class="text-4xl font-bold text-white tracking-tight leading-none">{{ formatMoney(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized) }}</div>
-                                <div class="bg-black/20 px-3 py-2 rounded-xl backdrop-blur-sm flex items-center gap-2 border border-white/10 shrink-0 ml-2"><span class="text-lg">💼</span><span class="text-xs font-bold text-white">{{ formatMoney(dashboard.total_balance) }}</span></div>
-                            </div>
-                            <div class="text-xs text-blue-200 opacity-80 mt-2 flex items-center gap-1"><span>Prognoza:</span><span class="font-bold bg-white/10 px-1.5 rounded text-white">{{ formatMoney(dashboard.monthly_income_forecast - dashboard.monthly_expenses_forecast) }}</span></div>
-                            <div class="mt-6 grid grid-cols-2 gap-4">
-                                <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5"><div class="flex justify-between items-center mb-1"><div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold">Przychody</div><div class="text-[10px] text-green-300 font-bold">{{ Math.round((dashboard.monthly_income_realized / (dashboard.monthly_income_forecast || 1)) * 100) }}%</div></div><div class="font-bold text-white text-lg leading-tight">{{ formatMoney(dashboard.monthly_income_realized) }}</div><div class="w-full bg-white/10 h-1 rounded-full mt-2 mb-1 overflow-hidden"><div class="bg-green-400 h-full shadow-[0_0_10px_rgba(74,222,128,0.5)]" :style="{ width: Math.min(100, (dashboard.monthly_income_realized / (dashboard.monthly_income_forecast || 1)) * 100) + '%' }"></div></div><div class="text-[10px] text-blue-200 text-right opacity-80">cel: {{ formatMoney(dashboard.monthly_income_forecast) }}</div></div>
-                                <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5"><div class="flex justify-between items-center mb-1"><div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold">Wydatki</div><div class="text-[10px] text-red-300 font-bold">{{ Math.round((dashboard.monthly_expenses_realized / (dashboard.monthly_expenses_forecast || 1)) * 100) }}%</div></div><div class="font-bold text-white text-lg leading-tight">{{ formatMoney(dashboard.monthly_expenses_realized) }}</div><div class="w-full bg-white/10 h-1 rounded-full mt-2 mb-1 overflow-hidden"><div class="bg-red-400 h-full shadow-[0_0_10px_rgba(248,113,113,0.5)]" :style="{ width: Math.min(100, (dashboard.monthly_expenses_realized / (dashboard.monthly_expenses_forecast || 1)) * 100) + '%' }"></div></div><div class="text-[10px] text-blue-200 text-right opacity-80">plan: {{ formatMoney(dashboard.monthly_expenses_forecast) }}</div></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-purple-500">
-                        <div>
-                            <div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele Oszczędnościowe</div>
-                            <div class="text-sm text-slate-200">Wymagane w tym okresie:</div>
-                            <div class="text-xl font-bold text-purple-400">{{ formatMoney(dashboard.goals_monthly_need) }}</div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-slate-500">Odłożono łącznie</div>
-                            <div class="text-lg font-bold text-white">{{ formatMoney(dashboard.goals_total_saved) }}</div>
-                        </div>
-                    </div>
-                    <transition :name="transitionName" mode="out-in">
-                        <div :key="periodOffset">
-                            <!-- KONTENER NAWIGACJI I FILTRÓW -->
-                            <div class="flex flex-col gap-3 mb-4">
-                                <!-- RZĄD 1: PRZEŁĄCZNIK WIDOKU -->
-                                <div class="bg-slate-800 p-1 rounded-xl grid grid-cols-3 gap-1">
-                                    <button @click="viewMode = 'list'" :class="viewMode === 'list' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Lista</button>
-                                    <button @click="viewMode = 'categories'" :class="viewMode === 'categories' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Kategorie</button>
-                                    <button @click="viewMode = 'chart'" :class="viewMode === 'chart' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Analiza</button>
-                                </div>
-                                <!-- RZĄD 2: FILTRY -->
-                                <div v-if="viewMode !== 'chart'" class="flex justify-between items-center gap-2">
-                                    <div class="relative flex-1">
-                                        <select v-model="filterAccount" class="w-full bg-slate-800 text-white text-xs font-bold py-2.5 pl-3 pr-8 rounded-xl border border-slate-700 outline-none appearance-none focus:border-blue-500 transition-colors">
-                                            <option :value="null">Wszystkie konta</option>
-                                            <option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option>
-                                        </select>
-                                        <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3 h-3"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg></div>
-                                    </div>
-                                    <div class="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
-                                        <button @click="filterStatus = 'all'" :class="filterStatus === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Wsz.</button>
-                                        <button @click="filterStatus = 'zrealizowana'" :class="filterStatus === 'zrealizowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Zreal.</button>
-                                        <button @click="filterStatus = 'planowana'" :class="filterStatus === 'planowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Plan.</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div v-if="viewMode === 'list'" class="space-y-3">
-                                <div v-if="filteredTransactions.length === 0" class="text-center text-slate-500 py-10">Brak transakcji w tym okresie</div>
-                                <div v-for="tx in filteredTransactions" :key="tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3 group transition-all" :class="tx.status === 'planowana' ? 'opacity-70 border-dashed border-slate-600' : ''">
-                                    <div :class="getIconClass(tx.type)" class="w-10 h-10 rounded-full flex items-center justify-center text-lg relative shrink-0">{{ getIcon(tx.type) }}<div v-if="tx.status === 'planowana'" class="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full border border-slate-900"></div></div>
-                                    <div class="flex-1 min-w-0"><div class="font-semibold text-slate-200 text-sm truncate pr-1">{{ tx.desc }}</div><div class="text-xs text-slate-500 truncate">{{ tx.category }} • {{ formatDateShort(tx.date) }}</div></div>
-                                    <div class="flex flex-col items-end gap-1 shrink-0"><div :class="getColorClass(tx.type)" class="font-bold text-sm whitespace-nowrap">{{ tx.type === 'income' ? '+' : (tx.type === 'transfer' ? '' : '-') }}{{ formatMoney(tx.amount) }}</div><div class="flex items-center gap-3 mt-1"><button v-if="tx.status === 'planowana'" @click="realizeTx(tx)" class="w-7 h-7 rounded-full bg-green-600/20 text-green-400 flex items-center justify-center hover:bg-green-600 hover:text-white transition-colors">✓</button><button @click="editTx(tx)" class="text-slate-500 hover:text-blue-400 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg></button><button @click="deleteTx(tx.id)" class="text-slate-500 hover:text-red-500 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg></button></div></div>
-                                </div>
-                            </div>
-                            <div v-if="viewMode === 'categories'" class="grid grid-cols-2 gap-3">
-                                <div v-for="cat in groupedCategories" :key="cat.name" @click="openCategoryDetails(cat)" class="glass-panel p-4 rounded-2xl active:scale-95 transition-transform cursor-pointer"><div class="flex justify-between items-start mb-2"><div class="font-bold text-slate-200 truncate text-sm">{{ cat.name }}</div><div class="text-xs text-slate-500">{{ cat.count }}</div></div><div :class="cat.total < 0 ? 'text-red-400' : 'text-green-400'" class="text-lg font-bold">{{ formatMoney(Math.abs(cat.total)) }}</div><div class="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden"><div :class="cat.total < 0 ? 'bg-red-500' : 'bg-green-500'" class="h-full" :style="{ width: Math.min(100, (Math.abs(cat.total) / maxCategoryAmount) * 100) + '%' }"></div></div></div>
-                            </div>
-                            <div v-show="viewMode === 'chart'" class="space-y-6">
-                                <div class="glass-panel p-4 rounded-2xl"><h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Trend Finansowy (6 msc)</h3><div class="relative h-48 w-full"><canvas id="trendChart"></canvas></div></div>
-                                <div class="glass-panel p-4 rounded-2xl"><h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Struktura Wydatków</h3><div class="space-y-4"><div v-for="cat in expenseCategories" :key="cat.name" class="group"><div class="flex justify-between items-end mb-1"><div class="font-bold text-slate-200 text-sm">{{ cat.name }}</div><div class="text-right"><div class="font-bold text-slate-200 text-sm">{{ formatMoney(Math.abs(cat.total)) }}</div><div class="text-[10px] text-slate-500">{{ cat.percent }}%</div></div></div><div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden"><div class="bg-blue-500 h-full rounded-full" :style="{ width: cat.percent + '%' }"></div></div></div><div v-if="expenseCategories.length === 0" class="text-center text-slate-500 text-sm py-4">Brak wydatków w tym okresie</div></div></div>
-                            </div>
-                        </div>
-                    </transition>
-                </div>
-            </div>
-
-            <!-- CELE -->
-            <div v-if="currentTab === 'goals'" class="px-6">
-                <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Cele Oszczędnościowe</h2><button @click="showAddGoal = !showAddGoal" class="text-blue-400 text-sm font-bold">{{ showAddGoal ? 'Anuluj' : '+ Dodaj' }}</button></div>
-                <div v-if="showAddGoal" class="glass-panel p-4 rounded-2xl mb-6">
-                    <div class="space-y-3">
-                        <input v-model="newGoal.name" placeholder="Nazwa celu" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                        <div>
-                            <label class="text-xs text-slate-400 uppercase font-bold ml-1">Przypisz do konta</label>
-                            <select v-model="newGoal.account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none mt-1">
-                                <option :value="null" disabled>-- Wybierz konto --</option>
-                                <option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option>
-                            </select>
-                        </div>
-                        <input v-model="newGoal.target_amount" type="number" placeholder="Kwota docelowa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none">
-                        <div>
-                            <label class="text-xs text-slate-400 uppercase font-bold ml-1">Termin realizacji</label>
-                            <input v-model="newGoal.deadline" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none mt-1">
-                        </div>
-                        <button @click="submitGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm mt-2">Utwórz Cel</button>
-                    </div>
-                </div>
-                <div class="space-y-4">
-                    <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-purple-500 relative overflow-hidden">
-                        <div class="flex justify-between items-start mb-2 relative z-10">
-                            <div>
-                                <div class="font-bold text-lg text-white">{{ goal.name }}</div>
-                                <div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div>
-                                <div class="text-[10px] text-blue-400 mt-1 font-bold" v-if="getAccountName(goal.account_id)">🏦 {{ getAccountName(goal.account_id) }}</div>
-                            </div>
-                            <div class="text-right"><div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div><div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div></div>
-                        </div>
-                        <div class="w-full bg-slate-700 h-2 rounded-full mb-2 overflow-hidden relative z-10"><div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div></div>
-                        <div v-if="goal.monthly_need > 0" class="flex justify-between items-center mb-3 relative z-10"><div class="text-[10px] text-slate-400 uppercase font-bold">Wymagane w tym cyklu:</div><div class="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded">{{ formatMoney(goal.monthly_need) }}</div></div>
-                        <div v-else class="mb-3 text-xs text-green-400 font-bold text-right relative z-10">Cel osiągnięty! 🎉</div>
-                        <div class="flex gap-2 mt-1 relative z-10"><button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700 border border-slate-700">Zasil</button><button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white hover:bg-slate-700 border border-slate-700">Przenieś</button><button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold border border-slate-700">×</button></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- DODAWANIE -->
-            <div v-if="currentTab === 'add'" class="px-6 pt-6 pb-40">
-                <h2 class="text-xl font-bold text-white mb-6">{{ editingTxId ? 'Edytuj operację' : 'Nowa operacja' }}</h2>
-                <div class="flex p-1 bg-slate-800 rounded-xl mb-6">
-                    <button @click="newTx.type = 'expense'" :class="newTx.type === 'expense' ? 'bg-red-500 text-white' : 'text-slate-400'" class="flex-1 py-2 rounded-lg text-sm font-bold transition-colors">Wydatek</button>
-                    <button @click="newTx.type = 'income'" :class="newTx.type === 'income' ? 'bg-green-500 text-white' : 'text-slate-400'" class="flex-1 py-2 rounded-lg text-sm font-bold transition-colors">Przychód</button>
-                    <button @click="newTx.type = 'transfer'" :class="newTx.type === 'transfer' ? 'bg-blue-500 text-white' : 'text-slate-400'" class="flex-1 py-2 rounded-lg text-sm font-bold transition-colors">Transfer</button>
-                </div>
-                <div class="space-y-5">
-                    <div class="flex justify-end"><label class="flex items-center gap-2 text-sm text-slate-300 font-bold bg-slate-800 px-3 py-2 rounded-lg"><input type="checkbox" v-model="isPlanned" class="w-4 h-4 rounded bg-slate-700 border-slate-500"> Transakcja Planowana</label></div>
-                    <div><label class="text-xs text-slate-400 uppercase font-bold">Kwota</label><input v-model="newTx.amount" type="number" class="input-dark w-full max-w-full p-3 rounded-2xl text-2xl font-bold mt-2 text-base outline-none bg-transparent appearance-none"></div>
-                    <div><label class="text-xs text-slate-400 uppercase font-bold">Data</label><input v-model="newTx.date" type="date" class="input-dark w-full max-w-full p-3 rounded-2xl mt-2 text-base outline-none bg-transparent appearance-none"></div>
-                    <div><label class="text-xs text-slate-400 uppercase font-bold">Opis</label><input v-model="newTx.description" @input="detectCategory" type="text" class="input-dark w-full max-w-full p-3 rounded-2xl mt-2 text-base outline-none bg-transparent appearance-none" placeholder="np. Biedronka"></div>
-                    <div><label class="text-xs text-slate-400 uppercase font-bold">{{ newTx.type === 'income' ? 'Na konto' : 'Z konta' }}</label><select v-model="newTx.account_id" class="input-dark w-full max-w-full p-3 rounded-2xl mt-2 text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option></select></div>
-                    <div v-if="newTx.type === 'transfer'"><label class="text-xs text-slate-400 uppercase font-bold">Na konto</label><select v-model="newTx.target_account_id" class="input-dark w-full max-w-full p-3 rounded-2xl mt-2 text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id" :disabled="acc.id === newTx.account_id">{{ acc.name }}</option></select></div>
-                    <div v-if="newTx.type === 'expense'"><label class="text-xs text-slate-400 uppercase font-bold">Kategoria / Spłata Kredytu</label><div class="flex flex-col gap-2"><select v-model="newTx.category_name" class="input-dark w-full max-w-full p-3 rounded-2xl mt-2 text-base outline-none bg-transparent appearance-none" :disabled="newTx.loan_id"><option value="" disabled>Wybierz kategorię</option><option v-for="cat in categories" :value="cat.name">{{ cat.name }}</option></select><div class="text-center text-xs text-slate-500 font-bold">- LUB -</div><select v-model="newTx.loan_id" class="input-dark w-full max-w-full p-3 rounded-2xl mt-2 text-base outline-none bg-transparent appearance-none border-blue-500/50" @change="newTx.loan_id ? newTx.category_name = null : null"><option :value="null">Nie dotyczy kredytu</option><option v-for="loan in activeLoans" :value="loan.id">Spłata: {{ loan.name }} (Pozostało: {{ formatMoney(loan.remaining) }})</option></select></div></div>
-                    <div class="flex gap-3"><button v-if="editingTxId" @click="cancelEdit" class="flex-1 py-4 rounded-2xl font-bold text-slate-400 bg-slate-800 mt-4">Anuluj</button><button @click="submitTransaction" class="flex-[2] py-4 rounded-2xl font-bold text-white bg-blue-600 mt-4 shadow-lg shadow-blue-600/30">{{ editingTxId ? 'Zaktualizuj' : 'Zapisz' }}</button></div>
-                </div>
-            </div>
-
-            <!-- KONTA -->
-            <div v-if="currentTab === 'accounts'" class="px-6 pt-6">
-                <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Moje Konta</h2><button @click="createTestAccount" class="text-blue-400 text-sm font-bold">+ Dodaj</button></div>
-                <div class="grid gap-4"><div v-for="acc in accounts" :key="acc.id" class="glass-panel p-5 rounded-2xl border-l-4" :class="acc.is_savings ? 'border-purple-500' : 'border-blue-500'"><div class="flex justify-between items-center"><div><div class="text-xs text-slate-400 uppercase">{{ acc.type }} <span v-if="acc.is_savings" class="text-purple-400 font-bold">(Oszcz.)</span></div><div class="font-bold text-lg text-white">{{ acc.name }}</div><div class="text-xl font-bold text-blue-400 mt-1">{{ formatMoney(acc.balance) }}</div></div><div class="flex gap-2"><button @click="editAccount(acc)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-blue-400">✏️</button><button @click="deleteAccount(acc.id)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-red-500">🗑️</button></div></div></div></div>
-            </div>
-
-            <!-- KREDYTY -->
-            <div v-if="currentTab === 'loans'" class="px-6 pt-6">
-                <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Kredyty</h2><button @click="showAddLoan = !showAddLoan" class="text-blue-400 text-sm font-bold">{{ showAddLoan ? 'Anuluj' : '+ Dodaj' }}</button></div>
-                <div v-if="loansData.upcoming && loansData.upcoming.length > 0" class="mb-6"><h3 class="text-xs font-bold text-slate-400 uppercase mb-2">Nadchodzące (30 dni)</h3><div class="flex gap-3 overflow-x-auto pb-2"><div v-for="pay in loansData.upcoming" class="bg-slate-800 p-3 rounded-xl min-w-[140px] border border-slate-700"><div class="text-xs text-slate-400">{{ pay.date }}</div><div class="font-bold text-white text-sm truncate">{{ pay.name }}</div><div class="text-red-400 font-bold">{{ formatMoney(pay.amount) }}</div></div></div></div>
-                <div class="flex justify-end mb-2"><label class="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" v-model="showPaidLoans"> Pokaż spłacone</label></div>
-                <div v-if="showAddLoan" class="glass-panel p-4 rounded-2xl mb-6"><div class="space-y-3"><input v-model="newLoan.name" placeholder="Nazwa" class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newLoan.next_payment_date" type="date" class="input-dark w-full p-3 rounded-xl text-sm"><button @click="submitLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Dodaj</button></div></div>
-                <div class="space-y-4"><div v-for="loan in filteredLoans" :key="loan.id" class="glass-panel p-5 rounded-2xl border-l-4" :class="loan.remaining <= 0 ? 'border-green-500 opacity-60' : 'border-red-500'"><div class="flex justify-between items-start mb-2"><div><div class="font-bold text-lg text-white">{{ loan.name }}</div><div :class="loan.remaining <= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold">{{ formatMoney(loan.remaining) }}</div></div><button @click="editLoan(loan)" class="text-slate-500 hover:text-blue-400 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg></button></div><div class="w-full bg-slate-700 h-2 rounded-full mb-3 overflow-hidden"><div class="bg-green-500 h-full" :style="{ width: calculateProgress(loan) + '%' }"></div></div><div class="flex justify-between text-xs text-slate-400"><div>Rata: <span class="text-slate-200">{{ formatMoney(loan.monthly) }}</span></div><div>Termin: <span class="text-slate-200">{{ loan.next_date }}</span></div></div></div></div>
-            </div>
-
-            <!-- USTAWIENIA -->
-            <div v-if="currentTab === 'settings'" class="px-6 pt-6">
-                <h2 class="text-xl font-bold text-white mb-6">Ustawienia</h2>
-                <div class="glass-panel p-5 rounded-2xl mb-6"><h3 class="font-bold text-slate-200 mb-4">Kategorie</h3><div class="flex gap-2 mb-4"><input v-model="newCategoryName" type="text" placeholder="Nowa kategoria" class="input-dark flex-1 p-2 rounded-lg"><button @click="addCategory" class="bg-blue-600 text-white px-4 rounded-lg font-bold">+</button></div><div class="flex flex-wrap gap-2"><div v-for="cat in categories" :key="cat.id" class="bg-slate-800 px-3 py-1 rounded-full text-sm flex items-center gap-2 border border-slate-700">{{ cat.name }}<button @click="deleteCategory(cat.id)" class="text-red-400 font-bold ml-1">×</button></div></div></div>
-                <div class="glass-panel p-5 rounded-2xl mb-6"><h3 class="font-bold text-slate-200 mb-4">Wyjątki Dnia Wypłaty</h3><div class="flex gap-2 mb-4"><input v-model="newOverride.year" type="number" placeholder="Rok" class="input-dark w-20 p-2 rounded-lg text-center"><select v-model="newOverride.month" class="input-dark flex-1 p-2 rounded-lg"><option v-for="m in 12" :value="m">{{ m }}</option></select><input v-model="newOverride.day" type="number" placeholder="Dzień" class="input-dark w-16 p-2 rounded-lg text-center"><button @click="addOverride" class="bg-blue-600 text-white px-4 rounded-lg font-bold">+</button></div><div class="space-y-2"><div v-for="ov in overrides" :key="ov.id" class="flex justify-between items-center bg-slate-800 p-3 rounded-lg"><div class="text-sm text-slate-200"><span class="font-bold">{{ ov.year }}-{{ String(ov.month).padStart(2, '0') }}</span>: Wypłata {{ ov.day }}-go</div><button @click="deleteOverride(ov.id)" class="text-red-400 text-xs font-bold">USUŃ</button></div></div></div>
+        <!-- APLIKACJA -->
+        <div v-else class="flex-1 flex flex-col h-full relative overflow-hidden">
+            <div class="flex-1 overflow-y-auto overflow-x-hidden pb-24 safe-top" @touchstart="handleTouchStart" @touchend="handleTouchEnd">
                 
-                <!-- PANEL BEZPIECZEŃSTWA -->
-                <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-blue-500">
-                    <h3 class="font-bold text-slate-200 mb-4">Bezpieczeństwo</h3>
-                    <div class="mb-6">
-                        <h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Zmień swoje hasło</h4>
-                        <div class="space-y-2">
-                            <input v-model="security.oldPassword" type="password" placeholder="Stare hasło" class="input-dark w-full p-2 rounded-lg text-sm">
-                            <input v-model="security.newPassword" type="password" placeholder="Nowe hasło" class="input-dark w-full p-2 rounded-lg text-sm">
-                            <button @click="changePassword" class="w-full bg-slate-700 hover:bg-blue-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">Zatwierdź zmianę</button>
+                <!-- HEADER -->
+                <div class="p-5 flex justify-between items-center bg-slate-900/90 backdrop-blur sticky top-0 z-40">
+                    <h1 class="text-xl font-bold text-slate-100">Mój Portfel</h1>
+                    <div class="flex gap-2">
+                        <button @click="currentTab = 'settings'" class="text-slate-400 hover:text-white p-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.581-.495.644-.869l.214-1.281z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button>
+                        <button @click="logout" class="text-slate-400 hover:text-red-400 p-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg></button>
+                    </div>
+                </div>
+
+                <!-- DASHBOARD -->
+                <div v-if="currentTab === 'dashboard'">
+                    <div class="px-6">
+                        <div class="flex items-center justify-center gap-3 bg-slate-800/50 rounded-xl p-1.5 border border-slate-700/50 mb-4">
+                            <button @click="changePeriod(-1)" class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white transition-all active:scale-90">◀</button>
+                            <div class="flex flex-col items-center px-2 cursor-pointer min-w-[90px]" @click="periodOffset = 0; fetchData()"><span class="text-xs font-bold text-slate-200 whitespace-nowrap">{{ formatDateShort(dashboard.period_start) }} - {{ formatDateShort(dashboard.period_end) }}</span><span v-if="periodOffset !== 0" class="text-[10px] text-blue-400 font-bold tracking-wider mt-0.5">WRÓĆ DO DZIŚ</span></div>
+                            <button @click="changePeriod(1)" class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white transition-all active:scale-90">▶</button>
+                        </div>
+                        
+                        <div class="gradient-card rounded-3xl p-6 shadow-2xl shadow-blue-900/20 relative overflow-hidden mb-4">
+                            <div class="relative z-10">
+                                <div class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Saldo Miesięczne</div>
+                                <div class="flex justify-between items-center">
+                                    <div class="text-4xl font-bold text-white tracking-tight leading-none">{{ formatMoney(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized) }}</div>
+                                    <div class="bg-black/20 px-3 py-2 rounded-xl backdrop-blur-sm flex items-center gap-2 border border-white/10 shrink-0 ml-2"><span class="text-lg">💼</span><span class="text-xs font-bold text-white">{{ formatMoney(dashboard.total_balance) }}</span></div>
+                                </div>
+                                <div class="text-xs text-blue-200 opacity-80 mt-2 flex items-center gap-1"><span>Prognoza:</span><span class="font-bold bg-white/10 px-1.5 rounded text-white">{{ formatMoney(dashboard.monthly_income_forecast - dashboard.monthly_expenses_forecast) }}</span></div>
+                                <div class="mt-6 grid grid-cols-2 gap-4">
+                                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5"><div class="flex justify-between items-center mb-1"><div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold">Przychody</div><div class="text-[10px] text-green-300 font-bold">{{ Math.round((dashboard.monthly_income_realized / (dashboard.monthly_income_forecast || 1)) * 100) }}%</div></div><div class="font-bold text-white text-lg leading-tight">{{ formatMoney(dashboard.monthly_income_realized) }}</div><div class="w-full bg-white/10 h-1 rounded-full mt-2 mb-1 overflow-hidden"><div class="bg-green-400 h-full shadow-[0_0_10px_rgba(74,222,128,0.5)]" :style="{ width: Math.min(100, (dashboard.monthly_income_realized / (dashboard.monthly_income_forecast || 1)) * 100) + '%' }"></div></div></div>
+                                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5"><div class="flex justify-between items-center mb-1"><div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold">Wydatki</div><div class="text-[10px] text-red-300 font-bold">{{ Math.round((dashboard.monthly_expenses_realized / (dashboard.monthly_expenses_forecast || 1)) * 100) }}%</div></div><div class="font-bold text-white text-lg leading-tight">{{ formatMoney(dashboard.monthly_expenses_realized) }}</div><div class="w-full bg-white/10 h-1 rounded-full mt-2 mb-1 overflow-hidden"><div class="bg-red-400 h-full shadow-[0_0_10px_rgba(248,113,113,0.5)]" :style="{ width: Math.min(100, (dashboard.monthly_expenses_realized / (dashboard.monthly_expenses_forecast || 1)) * 100) + '%' }"></div></div></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- KARTA CELÓW -->
+                        <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-purple-500">
+                            <div>
+                                <div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele oszczędnościowe</div>
+                                <div class="text-sm text-slate-200">Wymagane w tym okresie:</div>
+                                <div class="text-xl font-bold text-purple-400">{{ formatMoney(dashboard.goals_monthly_need) }}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs text-slate-500">Odłożono łącznie</div>
+                                <div class="text-lg font-bold text-white">{{ formatMoney(dashboard.goals_total_saved) }}</div>
+                            </div>
+                        </div>
+
+                        <transition :name="transitionName" mode="out-in">
+                            <div :key="periodOffset">
+                                <div class="flex flex-col gap-3 mb-4">
+                                    <div class="bg-slate-800 p-1 rounded-xl grid grid-cols-3 gap-1">
+                                        <button @click="viewMode = 'list'" :class="viewMode === 'list' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Lista</button>
+                                        <button @click="viewMode = 'categories'" :class="viewMode === 'categories' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Kategorie</button>
+                                        <button @click="viewMode = 'chart'" :class="viewMode === 'chart' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Analiza</button>
+                                    </div>
+                                    <div v-if="viewMode !== 'chart'" class="flex justify-between items-center gap-2">
+                                        <div class="relative flex-1">
+                                            <select v-model="filterAccount" class="w-full bg-slate-800 text-white text-xs font-bold py-2.5 pl-3 pr-8 rounded-xl border border-slate-700 outline-none appearance-none focus:border-blue-500 transition-colors"><option :value="null">Wszystkie konta</option><option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option></select>
+                                            <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">▼</div>
+                                        </div>
+                                        <div class="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
+                                            <button @click="filterStatus = 'all'" :class="filterStatus === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Wsz.</button>
+                                            <button @click="filterStatus = 'zrealizowana'" :class="filterStatus === 'zrealizowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Zreal.</button>
+                                            <button @click="filterStatus = 'planowana'" :class="filterStatus === 'planowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Plan.</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="viewMode === 'list'" class="space-y-3">
+                                    <div v-if="filteredTransactions.length === 0" class="text-center text-slate-500 py-10">Brak transakcji</div>
+                                    <div v-for="tx in filteredTransactions" :key="tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3 group transition-all" :class="tx.status === 'planowana' ? 'opacity-70 border-dashed border-slate-600' : ''">
+                                        <div :class="getIconClass(tx.type)" class="w-10 h-10 rounded-full flex items-center justify-center text-lg relative shrink-0">
+                                            {{ getIcon(tx.type) }}
+                                            <div v-if="tx.status === 'planowana'" class="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full border border-slate-900"></div>
+                                        </div>
+                                        <div class="flex-1 min-w-0"><div class="font-semibold text-slate-200 text-sm truncate pr-1">{{ tx.desc }}</div><div class="text-xs text-slate-500 truncate">{{ tx.category }} • {{ formatDateShort(tx.date) }}</div></div>
+                                        <div class="flex flex-col items-end gap-1 shrink-0">
+                                            <div :class="getColorClass(tx.type)" class="font-bold text-sm whitespace-nowrap">{{ tx.type === 'income' ? '+' : (tx.type === 'transfer' ? '' : '-') }}{{ formatMoney(tx.amount) }}</div>
+                                            <div class="flex items-center gap-3 mt-1">
+                                                <button v-if="tx.status === 'planowana'" @click="realizeTx(tx)" class="w-7 h-7 rounded-full bg-green-600/20 text-green-400 flex items-center justify-center hover:bg-green-600 hover:text-white transition-colors">✓</button>
+                                                <button @click="copyTx(tx)" class="text-slate-500 hover:text-blue-400 p-1" title="Kopiuj">❐</button>
+                                                <button @click="editTx(tx)" class="text-slate-500 hover:text-blue-400 p-1">✎</button>
+                                                <button @click="deleteTx(tx.id)" class="text-slate-500 hover:text-red-500 p-1">×</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="viewMode === 'categories'" class="grid grid-cols-2 gap-3">
+                                    <div v-for="cat in groupedCategories" :key="cat.name" @click="openCategoryDetails(cat)" class="glass-panel p-4 rounded-2xl active:scale-95 transition-transform cursor-pointer">
+                                        <div class="flex justify-between items-start mb-1"><div class="font-bold text-slate-200 truncate text-sm">{{ cat.name }}</div><div class="text-xs text-slate-500">{{ cat.count }}</div></div>
+                                        <div :class="cat.total < 0 ? 'text-red-400' : 'text-green-400'" class="text-lg font-bold">{{ formatMoney(Math.abs(cat.total)) }}</div>
+                                        <div v-if="cat.limit > 0" class="mt-2">
+                                            <div class="flex justify-between text-[10px] text-slate-400 mb-0.5"><span>{{ Math.round((Math.abs(cat.total) / cat.limit) * 100) }}%</span><span>Limit: {{ formatMoney(cat.limit) }}</span></div>
+                                            <div class="budget-bar-bg"><div class="budget-bar-fill" :class="Math.abs(cat.total) > cat.limit ? 'bg-red-500' : (Math.abs(cat.total) > cat.limit * 0.8 ? 'bg-yellow-500' : 'bg-green-500')" :style="{ width: Math.min(100, (Math.abs(cat.total) / cat.limit) * 100) + '%' }"></div></div>
+                                        </div>
+                                        <div v-else class="mt-2 text-[10px] text-slate-600 text-center">Kliknij, aby ustawić budżet</div>
+                                    </div>
+                                </div>
+
+                                <div v-show="viewMode === 'chart'" class="space-y-6">
+                                    <div class="glass-panel p-4 rounded-2xl"><h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Trend Finansowy</h3><div class="relative h-48 w-full"><canvas id="trendChart"></canvas></div></div>
+                                </div>
+                            </div>
+                        </transition>
+                    </div>
+                </div>
+
+                <!-- CELE -->
+                <div v-if="currentTab === 'goals'" class="px-6">
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Cele Oszczędnościowe</h2><button @click="showAddGoal = !showAddGoal" class="text-blue-400 text-sm font-bold">{{ showAddGoal ? 'Anuluj' : '+ Dodaj' }}</button></div>
+                    <div v-if="showAddGoal" class="glass-panel p-4 rounded-2xl mb-6">
+                        <div class="space-y-3">
+                            <input v-model="newGoal.name" placeholder="Nazwa celu" class="input-dark w-full p-3 rounded-xl">
+                            <select v-model="newGoal.account_id" class="input-dark w-full p-3 rounded-xl"><option :value="null" disabled>-- Wybierz konto --</option><option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option></select>
+                            <input v-model="newGoal.target_amount" type="number" placeholder="Kwota docelowa" class="input-dark w-full p-3 rounded-xl">
+                            <input v-model="newGoal.deadline" type="date" class="input-dark w-full p-3 rounded-xl">
+                            <button @click="submitGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm mt-2">Utwórz Cel</button>
                         </div>
                     </div>
+                    <div class="space-y-4">
+                        <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-purple-500 relative overflow-hidden">
+                            <div class="flex justify-between items-start mb-2 relative z-10">
+                                <div><div class="font-bold text-lg text-white">{{ goal.name }}</div><div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div></div>
+                                <div class="text-right"><div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div><div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div></div>
+                            </div>
+                            <div class="w-full bg-slate-700 h-2 rounded-full mb-2 overflow-hidden relative z-10"><div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div></div>
+                            
+                            <div v-if="goal.monthly_need > 0" class="flex justify-between items-center mb-3 relative z-10">
+                                <div class="text-[10px] text-slate-400 uppercase font-bold">Wymagane w tym cyklu:</div>
+                                <div class="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded">{{ formatMoney(goal.monthly_need) }}</div>
+                            </div>
+                            <div v-else class="mb-3 text-xs text-green-400 font-bold text-right relative z-10">Cel osiągnięty! 🎉</div>
+                            
+                            <div class="flex gap-2 mt-1 relative z-10"><button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Zasil</button><button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Przenieś</button><button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold border border-slate-700">×</button></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DODAWANIE (NOWY DESIGN + KLAWIATURA NUMERYCZNA + KATEGORIE DLA PRZYCHODU + NOWA KOLEJNOŚĆ) -->
+                <div v-if="currentTab === 'add'" class="px-4 pt-4 pb-40">
+                    <h2 class="text-lg font-bold text-white mb-4 text-center">{{ editingTxId ? 'Edycja' : 'Nowa transakcja' }}</h2>
+                    
+                    <!-- Przełącznik Typu -->
+                    <div class="bg-slate-800 p-1 rounded-xl flex mb-6">
+                        <button @click="newTx.type = 'expense'" class="type-btn flex-1" :class="newTx.type === 'expense' ? 'active-exp' : 'inactive-btn'">Wydatek</button>
+                        <button @click="newTx.type = 'income'" class="type-btn flex-1" :class="newTx.type === 'income' ? 'active-inc' : 'inactive-btn'">Przychód</button>
+                        <button @click="newTx.type = 'transfer'" class="type-btn flex-1" :class="newTx.type === 'transfer' ? 'active-trf' : 'inactive-btn'">Transfer</button>
+                    </div>
+
+                    <!-- Wielka Kwota (Klawiatura Numeryczna) -->
+                    <div class="mb-8 relative text-center">
+                        <input v-model="newTx.amount" type="number" step="0.01" inputmode="decimal" pattern="[0-9]*" class="big-amount-input" placeholder="0.00">
+                        <div class="text-slate-500 text-sm font-bold mt-1">PLN</div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <!-- Data i Konto -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                                <label class="text-[10px] text-slate-400 uppercase font-bold block mb-1">Kiedy?</label>
+                                <input v-model="newTx.date" type="date">
+                            </div>
+                            <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 relative">
+                                <label class="text-[10px] text-slate-400 uppercase font-bold block mb-1">{{ newTx.type === 'income' ? 'Na konto' : 'Z konta' }}</label>
+                                <select v-model="newTx.account_id" class="bg-transparent text-white text-sm font-bold w-full outline-none appearance-none pr-4 truncate"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option></select>
+                                <div class="absolute right-3 bottom-3 pointer-events-none text-slate-400 text-xs">▼</div>
+                            </div>
+                        </div>
+
+                        <!-- Opis (PRZESUNIĘTY WYŻEJ) -->
+                        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                            <input v-model="newTx.description" @input="detectCategory" type="text" class="bg-transparent text-white text-sm w-full outline-none" placeholder="Opis (wymagane)">
+                        </div>
+
+                        <!-- Kategoria / Cel (PRZESUNIĘTE NIŻEJ) -->
+                        <div v-if="newTx.type === 'transfer'" class="bg-slate-800 p-3 rounded-xl border border-slate-700 relative">
+                            <label class="text-[10px] text-slate-400 uppercase font-bold block mb-1">Na konto</label>
+                            <select v-model="newTx.target_account_id" class="bg-transparent text-white text-sm font-bold w-full outline-none appearance-none pr-4 truncate"><option v-for="acc in accounts" :value="acc.id" :disabled="acc.id === newTx.account_id">{{ acc.name }}</option></select>
+                            <div class="absolute right-3 bottom-3 pointer-events-none text-slate-400 text-xs">▼</div>
+                        </div>
+
+                        <div v-if="newTx.type !== 'transfer'" class="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center gap-2" :class="{'opacity-50': newTx.loan_id}">
+                            <div class="flex-1 relative">
+                                <label class="text-[10px] text-slate-400 uppercase font-bold block mb-1">Kategoria</label>
+                                <select v-model="newTx.category_name" class="bg-transparent text-white text-sm font-bold w-full outline-none appearance-none pr-4 truncate" :disabled="newTx.loan_id">
+                                    <option value="" disabled>Wybierz...</option>
+                                    <option value="Spłata zobowiązań" v-if="newTx.loan_id">Spłata zobowiązań</option>
+                                    <option v-for="cat in categories" :value="cat.name">{{ cat.name }}</option>
+                                </select>
+                                <div class="absolute right-0 bottom-0.5 pointer-events-none text-slate-400 text-xs">▼</div>
+                            </div>
+                            <!-- Opcja spłaty kredytu (TYLKO DLA WYDATKÓW) -->
+                            <div v-if="newTx.type === 'expense'" class="border-l border-slate-600 pl-3 relative">
+                                <label class="text-[10px] text-blue-400 uppercase font-bold block mb-1">Kredyt?</label>
+                                <select v-model="newTx.loan_id" @change="handleLoanChange" class="bg-transparent text-xs text-white font-bold outline-none appearance-none w-24 truncate">
+                                    <option :value="null">Nie</option>
+                                    <option v-for="loan in activeLoans" :value="loan.id">{{ loan.name }}</option>
+                                </select>
+                                <div class="absolute right-0 bottom-0.5 pointer-events-none text-slate-400 text-xs">▼</div>
+                            </div>
+                        </div>
+
+                        <!-- Planowana -->
+                        <label class="flex items-center justify-center gap-2 text-xs text-slate-400 py-2">
+                            <input type="checkbox" v-model="isPlanned" class="w-4 h-4 rounded bg-slate-700 border-slate-500">
+                            Zaznacz jako transakcję planowaną
+                        </label>
+
+                        <!-- Przyciski -->
+                        <div class="flex gap-3 pt-2">
+                            <button v-if="editingTxId" @click="cancelEdit" class="flex-1 py-3 rounded-xl font-bold text-slate-400 bg-slate-800 text-sm">Anuluj</button>
+                            <button @click="submitTransaction" class="flex-[2] py-3 rounded-xl font-bold text-white bg-blue-600 shadow-lg shadow-blue-600/30 text-sm active:scale-95 transition-transform">
+                                {{ editingTxId ? 'Zapisz zmiany' : 'Dodaj transakcję' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KONTA -->
+                <div v-if="currentTab === 'accounts'" class="px-6 pt-6">
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold text-white">Moje konta</h2><button @click="createTestAccount" class="text-blue-400 text-sm font-bold">+ Dodaj</button></div>
+                    <div class="grid gap-4"><div v-for="acc in accounts" :key="acc.id" class="glass-panel p-5 rounded-2xl border-l-4" :class="acc.is_savings ? 'border-purple-500' : 'border-blue-500'"><div class="flex justify-between items-center"><div><div class="text-xs text-slate-400 uppercase">{{ acc.type }} <span v-if="acc.is_savings" class="text-purple-400 font-bold">(Oszcz.)</span></div><div class="font-bold text-lg text-white">{{ acc.name }}</div><div class="text-xl font-bold text-blue-400 mt-1">{{ formatMoney(acc.balance) }}</div></div><div class="flex gap-2"><button @click="editAccount(acc)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-blue-400">✏️</button><button @click="deleteAccount(acc.id)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-red-500">🗑️</button></div></div></div></div>
+                </div>
+
+                <!-- PŁATNOŚCI (KREDYTY + STAŁE) -->
+                <div v-if="currentTab === 'payments'" class="px-6 pt-6">
+                    <h2 class="text-xl font-bold text-white mb-6">Zobowiązania</h2>
+                    
+                    <!-- Sekcja Kredytów -->
+                    <div class="mb-8">
+                        <div class="flex justify-between items-center mb-4"><h3 class="text-sm font-bold text-slate-400 uppercase">Kredyty i Raty</h3><button @click="showAddLoan = !showAddLoan" class="text-blue-400 text-xs font-bold">{{ showAddLoan ? 'Anuluj' : '+ Dodaj' }}</button></div>
+                        
+                        <!-- PRZYWRÓCONY CHECKBOX -->
+                        <div class="flex justify-end mb-2"><label class="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" v-model="showPaidLoans"> Pokaż spłacone</label></div>
+
+                        <div v-if="showAddLoan" class="glass-panel p-4 rounded-2xl mb-4"><div class="space-y-3"><input v-model="newLoan.name" placeholder="Nazwa" class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newLoan.next_payment_date" type="date" class="input-dark w-full p-3 rounded-xl text-sm"><button @click="submitLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Dodaj</button></div></div>
+                        <div class="space-y-4"><div v-for="loan in filteredLoans" :key="loan.id" class="glass-panel p-5 rounded-2xl border-l-4" :class="loan.remaining <= 0 ? 'border-green-500 opacity-60' : 'border-red-500'"><div class="flex justify-between items-start mb-2"><div><div class="font-bold text-lg text-white">{{ loan.name }}</div><div :class="loan.remaining <= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold">{{ formatMoney(loan.remaining) }}</div></div><button @click="editLoan(loan)" class="text-slate-500 hover:text-blue-400 p-1">✎</button></div><div class="w-full bg-slate-700 h-2 rounded-full mb-3 overflow-hidden"><div class="bg-green-500 h-full" :style="{ width: calculateProgress(loan) + '%' }"></div></div><div class="flex justify-between text-xs text-slate-400"><div>Rata: <span class="text-slate-200">{{ formatMoney(loan.monthly) }}</span></div><div>Termin: <span class="text-slate-200">{{ loan.next_date }}</span></div></div></div></div>
+                    </div>
+
+                    <!-- Sekcja Stałych Opłat -->
                     <div>
-                        <h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Dodaj domownika</h4>
-                        <div class="flex gap-2 mb-2">
-                            <input v-model="security.newUsername" type="text" placeholder="Login (np. zona)" class="input-dark flex-1 p-2 rounded-lg text-sm">
-                            <input v-model="security.newUserPass" type="password" placeholder="Hasło" class="input-dark flex-1 p-2 rounded-lg text-sm">
-                        </div>
-                        <button @click="registerUser" class="w-full bg-slate-700 hover:bg-green-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">+ Utwórz konto</button>
+                        <div class="flex justify-between items-center mb-4"><h3 class="text-sm font-bold text-slate-400 uppercase">Stałe Opłaty (Subskrypcje)</h3><button @click="showAddRecurring = !showAddRecurring" class="text-blue-400 text-xs font-bold">{{ showAddRecurring ? 'Anuluj' : '+ Dodaj' }}</button></div>
+                        <div v-if="showAddRecurring" class="glass-panel p-4 rounded-2xl mb-4 space-y-3"><input v-model="newRecurring.name" placeholder="Nazwa (np. Netflix)" class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newRecurring.amount" type="number" placeholder="Kwota" class="input-dark w-full p-3 rounded-xl text-sm"><div class="flex gap-2"><input v-model="newRecurring.day_of_month" type="number" placeholder="Dzień" class="input-dark w-20 p-3 rounded-xl text-sm text-center"><input v-model="newRecurring.category_name" placeholder="Kategoria" list="catList" class="input-dark flex-1 p-3 rounded-xl text-sm"></div><select v-model="newRecurring.account_id" class="input-dark w-full p-3 rounded-xl text-sm"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option></select><button @click="submitRecurring" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz</button></div>
+                        <div class="space-y-3"><div v-for="rec in recurringList" :key="rec.id" class="glass-panel p-4 rounded-2xl flex justify-between items-center"><div><div class="font-bold text-white">{{ rec.name }}</div><div class="text-xs text-slate-400">{{ rec.day_of_month }}-go dnia miesiąca • {{ rec.category ? rec.category.name : '-' }}</div></div><div class="text-right"><div class="font-bold text-white">{{ formatMoney(rec.amount) }}</div><button @click="deleteRecurring(rec.id)" class="text-red-400 text-xs font-bold mt-1">USUŃ</button></div></div></div>
+                    </div>
+                </div>
+
+                <!-- USTAWIENIA -->
+                <div v-if="currentTab === 'settings'" class="px-6 pt-6">
+                    <h2 class="text-xl font-bold text-white mb-6">Ustawienia</h2>
+                    <div class="glass-panel p-5 rounded-2xl mb-6"><h3 class="font-bold text-slate-200 mb-4">Kategorie</h3><div class="flex gap-2 mb-4"><input v-model="newCategoryName" type="text" placeholder="Nowa kategoria" class="input-dark flex-1 p-2 rounded-lg"><button @click="addCategory" class="bg-blue-600 text-white px-4 rounded-lg font-bold">+</button></div><div class="flex flex-wrap gap-2"><div v-for="cat in categories" :key="cat.id" class="bg-slate-800 px-3 py-1 rounded-full text-sm flex items-center gap-2 border border-slate-700">{{ cat.name }}<button @click="deleteCategory(cat.id)" class="text-red-400 font-bold ml-1">×</button></div></div></div>
+                    <div class="glass-panel p-5 rounded-2xl mb-6"><h3 class="font-bold text-slate-200 mb-4">Wyjątki Dnia Wypłaty</h3><div class="flex gap-2 mb-4"><input v-model="newOverride.year" type="number" placeholder="Rok" class="input-dark w-20 p-2 rounded-lg text-center"><select v-model="newOverride.month" class="input-dark flex-1 p-2 rounded-lg"><option v-for="m in 12" :value="m">{{ m }}</option></select><input v-model="newOverride.day" type="number" placeholder="Dzień" class="input-dark w-16 p-2 rounded-lg text-center"><button @click="addOverride" class="bg-blue-600 text-white px-4 rounded-lg font-bold">+</button></div><div class="space-y-2"><div v-for="ov in overrides" :key="ov.id" class="flex justify-between items-center bg-slate-800 p-3 rounded-lg"><div class="text-sm text-slate-200"><span class="font-bold">{{ ov.year }}-{{ String(ov.month).padStart(2, '0') }}</span>: Wypłata {{ ov.day }}-go</div><button @click="deleteOverride(ov.id)" class="text-red-400 text-xs font-bold">USUŃ</button></div></div></div>
+                    <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-blue-500"><h3 class="font-bold text-slate-200 mb-4">Bezpieczeństwo</h3><div class="mb-6"><h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Zmień swoje hasło</h4><div class="space-y-2"><input v-model="security.oldPassword" type="password" placeholder="Stare hasło" class="input-dark w-full p-2 rounded-lg text-sm"><input v-model="security.newPassword" type="password" placeholder="Nowe hasło" class="input-dark w-full p-2 rounded-lg text-sm"><button @click="changePassword" class="w-full bg-slate-700 hover:bg-blue-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">Zatwierdź zmianę</button></div></div><div><h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Dodaj domownika</h4><div class="flex gap-2 mb-2"><input v-model="security.newUsername" type="text" placeholder="Login (np. zona)" class="input-dark flex-1 p-2 rounded-lg text-sm"><input v-model="security.newUserPass" type="password" placeholder="Hasło" class="input-dark flex-1 p-2 rounded-lg text-sm"></div><button @click="registerUser" class="w-full bg-slate-700 hover:bg-green-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">+ Utwórz konto</button></div></div>
+                </div>
+            </div>
+
+            <!-- DOLNA NAWIGACJA -->
+            <div v-if="isLoggedIn" class="fixed bottom-0 left-0 right-0 glass-panel border-t border-slate-800 pb-safe safe-bottom z-50 h-16">
+                <div class="nav-container">
+                    <div class="nav-group">
+                        <div @click="currentTab = 'dashboard'" :class="{active: currentTab === 'dashboard'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg><span class="nav-label">Pulpit</span></div>
+                        <div @click="currentTab = 'accounts'" :class="{active: currentTab === 'accounts'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5H4.5a2.25 2.25 0 00-2.25 2.25v10.5a2.25 2.25 0 002.25 2.25z" /></svg><span class="nav-label">Konta</span></div>
+                    </div>
+                    <div class="fab-container"><button @click="resetForm(); currentTab = 'add'" class="fab-btn group"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-8 h-8 group-active:rotate-90 transition-transform duration-200"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></button></div>
+                    <div class="nav-group">
+                        <div @click="currentTab = 'goals'" :class="{active: currentTab === 'goals'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" /></svg><span class="nav-label">Cele</span></div>
+                        <div @click="currentTab = 'payments'" :class="{active: currentTab === 'payments'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span class="nav-label">Płatności</span></div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- MODALE -->
-        <div v-if="selectedCategory" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="selectedCategory = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5 max-h-[80vh] overflow-y-auto"><div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold text-white">{{ selectedCategory.name }}</h3><button @click="selectedCategory = null" class="text-slate-400 text-2xl">&times;</button></div><div class="space-y-3"><div v-for="tx in selectedCategory.transactions" :key="tx.id" class="flex justify-between items-center border-b border-slate-700 pb-2"><div><div class="text-sm text-slate-200">{{ tx.desc }}</div><div class="text-xs text-slate-500">{{ tx.date }}</div></div><div :class="tx.type === 'expense' ? 'text-red-400' : 'text-green-400'" class="font-bold text-sm">{{ formatMoney(tx.amount) }}</div></div></div></div></div>
-        <div v-if="editingLoan" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="editingLoan = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Edytuj Kredyt</h3><div class="space-y-3"><input v-model="editingLoan.name" placeholder="Nazwa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.next_payment_date" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="updateLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz zmiany</button></div></div></div>
-        <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Z konta</label><select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }}) {{ acc.is_savings ? '🐷' : '💳' }}</option></select><div v-if="isSourceROR" class="bg-blue-900/20 p-3 rounded-xl border border-blue-500/30"><label class="text-xs text-blue-300 uppercase font-bold mb-1 block">Automatyczny transfer na:</label><select v-model="fundData.target_savings_id" class="input-dark w-full max-w-full p-2 rounded-lg text-sm outline-none bg-slate-900 appearance-none"><option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }}</option></select><div class="text-[10px] text-blue-400 mt-1">System automatycznie przeleje środki na to konto oszczędnościowe.</div></div><input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil Cel</button></div></div></div>
-        <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
-
-        <!-- NAV -->
-        <div v-if="isLoggedIn" class="fixed bottom-0 left-0 right-0 glass-panel border-t border-slate-800 pb-safe safe-bottom z-50 h-16">
-            <div class="nav-container">
-                <div class="nav-group">
-                    <div @click="currentTab = 'dashboard'" :class="{active: currentTab === 'dashboard'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg><span class="nav-label">Pulpit</span></div>
-                    <div @click="currentTab = 'accounts'" :class="{active: currentTab === 'accounts'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5H4.5a2.25 2.25 0 00-2.25 2.25v10.5a2.25 2.25 0 002.25 2.25z" /></svg><span class="nav-label">Konta</span></div>
-                </div>
-                <div class="fab-container"><button @click="resetForm(); currentTab = 'add'" class="fab-btn group"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-8 h-8 group-active:rotate-90 transition-transform duration-200"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></button></div>
-                <div class="nav-group">
-                    <div @click="currentTab = 'loans'" :class="{active: currentTab === 'loans'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg><span class="nav-label">Kredyty</span></div>
-                    <div @click="currentTab = 'goals'" :class="{active: currentTab === 'goals'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" /></svg><span class="nav-label">Cele</span></div>
+            <!-- MODALE -->
+            <div v-if="selectedCategory" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="selectedCategory = null">
+                <div class="glass-panel w-full max-w-md rounded-2xl p-5 max-h-[80vh] overflow-y-auto flex flex-col">
+                    <div class="flex justify-between items-center mb-4 shrink-0"><h3 class="text-xl font-bold text-white">{{ selectedCategory.name }}</h3><button @click="selectedCategory = null" class="text-slate-400 text-2xl hover:text-white">&times;</button></div>
+                    <div class="bg-slate-800 p-3 rounded-xl mb-4 border border-slate-700 shrink-0"><label class="text-xs text-slate-400 uppercase font-bold block mb-1">Miesięczny Budżet</label><div class="flex gap-2"><input type="number" v-model="selectedCategory.limit" class="input-dark flex-1 p-2 rounded-lg text-sm" placeholder="Brak limitu"><button @click="updateCategoryLimit(selectedCategory)" class="bg-blue-600 text-white px-3 rounded-lg text-xs font-bold">Zapisz</button></div></div>
+                    <div class="space-y-2 overflow-y-auto pr-1"><div v-for="tx in selectedCategory.transactions" :key="tx.id" @click="editTxFromModal(tx)" class="flex justify-between items-center border-b border-slate-700/50 pb-2 last:border-0 transition-all cursor-pointer hover:bg-white/5 p-2 rounded-lg" :class="{'opacity-60': tx.status === 'planowana'}"><div class="flex items-center gap-3 min-w-0"><div class="shrink-0"><div v-if="tx.status === 'planowana'" class="w-2.5 h-2.5 bg-yellow-500 rounded-full shadow-[0_0_5px_rgba(234,179,8,0.5)]" title="Planowana"></div><div v-else class="w-2.5 h-2.5 bg-slate-700 rounded-full"></div></div><div class="min-w-0"><div class="text-sm text-slate-200 truncate font-medium">{{ tx.desc }}</div><div class="text-[10px] text-slate-500">{{ formatDateShort(tx.date) }}</div></div></div><div class="flex items-center gap-3 shrink-0 pl-2"><div :class="tx.type === 'expense' ? 'text-red-400' : 'text-green-400'" class="font-bold text-sm whitespace-nowrap">{{ formatMoney(tx.amount) }}</div><button v-if="tx.status === 'planowana'" @click.stop="realizeTxFromModal(tx)" class="w-8 h-8 flex items-center justify-center bg-green-500/20 text-green-400 rounded hover:bg-green-500 hover:text-white transition-colors border border-green-500/30" title="Zrealizuj">✓</button><div class="text-slate-500 text-lg">›</div></div></div></div>
                 </div>
             </div>
+            <div v-if="editingLoan" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="editingLoan = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Edytuj Kredyt</h3><div class="space-y-3"><input v-model="editingLoan.name" placeholder="Nazwa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.next_payment_date" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="updateLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz zmiany</button></div></div></div>
+            <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Z konta</label><select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }}) {{ acc.is_savings ? '🐷' : '💳' }}</option></select><div v-if="isSourceROR" class="bg-blue-900/20 p-3 rounded-xl border border-blue-500/30"><label class="text-xs text-blue-300 uppercase font-bold mb-1 block">Automatyczny transfer na:</label><select v-model="fundData.target_savings_id" class="input-dark w-full max-w-full p-2 rounded-lg text-sm outline-none bg-slate-900 appearance-none"><option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }}</option></select><div class="text-[10px] text-blue-400 mt-1">System automatycznie przeleje środki na to konto oszczędnościowe.</div></div><input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil Cel</button></div></div></div>
+            <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
+            <div v-if="duePayments.length > 0" class="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"><div class="glass-panel w-full max-w-md rounded-2xl p-6 border border-blue-500/50"><h3 class="text-xl font-bold text-white mb-2">🔔 Płatności cykliczne</h3><p class="text-sm text-slate-400 mb-4">Poniższe opłaty są wymagalne w tym miesiącu. Czy chcesz je dodać?</p><div class="space-y-2 max-h-[50vh] overflow-y-auto mb-4"><div v-for="pay in duePayments" :key="pay.id" class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div><div class="font-bold text-white text-sm">{{ pay.name }}</div><div class="text-xs text-slate-400">{{ pay.category }}</div></div><div class="flex items-center gap-3"><div class="font-bold text-white">{{ formatMoney(pay.amount) }}</div><button @click="processRecurring(pay)" class="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">✓</button></div></div></div><button @click="duePayments = []" class="w-full py-3 text-slate-400 text-sm font-bold">Zamknij (Zrobię to później)</button></div></div>
         </div>
     </div>
-    
-    <!-- SKRYPT APLIKACJI -->
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=14"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
-from datetime import date, timedelta  # <--- TU BYŁ BŁĄD (brakowało timedelta)
+from datetime import date, timedelta
 import database, models, schemas, utils
 
 router = APIRouter(prefix="/api", tags=["Finance"])
@@ -47,14 +47,14 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), curre
                 if cycles_left > 120: break
             goals_monthly_need += (remaining / cycles_left)
 
-    recent = db.query(models.Transaction).options(joinedload(models.Transaction.category), joinedload(models.Transaction.loan)).filter(models.Transaction.date >= start_date, models.Transaction.date <= end_date).order_by(models.Transaction.date.desc()).all()
+    # ZMIANA: Sortowanie najpierw po dacie (malejąco), potem po ID (malejąco)
+    recent = db.query(models.Transaction).options(joinedload(models.Transaction.category), joinedload(models.Transaction.loan)).filter(models.Transaction.date >= start_date, models.Transaction.date <= end_date).order_by(models.Transaction.date.desc(), models.Transaction.id.desc()).all()
     
     tx_list = []
     for t in recent:
         cat_name = t.category.name if t.category else "-"
         if t.type == 'transfer': cat_name = "Transfer"
-        if t.loan: cat_name = f"Spłata: {t.loan.name}"
-
+        
         tx_list.append({
             "id": t.id, "desc": t.description, "amount": float(t.amount),
             "type": t.type, "category": cat_name, "date": str(t.date),
@@ -90,12 +90,22 @@ def get_trend(db: Session = Depends(database.get_db), current_user: models.User 
 @router.post("/transactions")
 def add_transaction(tx: schemas.TransactionCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     cat_id = None
-    if tx.type != 'transfer' and tx.category_name:
+    
+    if tx.loan_id:
+        target_cat = "Spłata zobowiązań"
+        cat = db.query(models.Category).filter(models.Category.name == target_cat).first()
+        if not cat:
+            cat = models.Category(name=target_cat)
+            db.add(cat)
+            db.commit()
+        cat_id = cat.id
+    elif tx.type != 'transfer' and tx.category_name:
         cat = db.query(models.Category).filter(models.Category.name == tx.category_name).first()
         if not cat:
             cat = models.Category(name=tx.category_name)
             db.add(cat); db.commit()
         cat_id = cat.id
+
     new_tx = models.Transaction(amount=tx.amount, description=tx.description, date=tx.date, type=tx.type, account_id=tx.account_id, category_id=cat_id, status=tx.status, target_account_id=tx.target_account_id, loan_id=tx.loan_id)
     db.add(new_tx)
     if tx.status == 'zrealizowana':
@@ -111,16 +121,27 @@ def update_transaction(tx_id: int, tx_data: schemas.TransactionCreate, db: Sessi
     if old_tx.status == 'zrealizowana':
         utils.update_balance(db, old_tx.account_id, old_tx.amount, old_tx.type, old_tx.target_account_id, is_reversal=True)
         if old_tx.loan_id and old_tx.type == 'expense': utils.update_loan_balance(db, old_tx.loan_id, old_tx.amount, is_reversal=True)
+    
     cat_id = None
-    if tx_data.type != 'transfer' and tx_data.category_name:
+    if tx_data.loan_id:
+        target_cat = "Spłata zobowiązań"
+        cat = db.query(models.Category).filter(models.Category.name == target_cat).first()
+        if not cat:
+            cat = models.Category(name=target_cat)
+            db.add(cat)
+            db.commit()
+        cat_id = cat.id
+    elif tx_data.type != 'transfer' and tx_data.category_name:
         cat = db.query(models.Category).filter(models.Category.name == tx_data.category_name).first()
         if not cat:
             cat = models.Category(name=tx_data.category_name)
             db.add(cat); db.commit()
         cat_id = cat.id
+
     old_tx.amount = tx_data.amount; old_tx.description = tx_data.description; old_tx.date = tx_data.date
     old_tx.type = tx_data.type; old_tx.account_id = tx_data.account_id; old_tx.target_account_id = tx_data.target_account_id
     old_tx.category_id = cat_id; old_tx.status = tx_data.status; old_tx.loan_id = tx_data.loan_id
+    
     if tx_data.status == 'zrealizowana':
         utils.update_balance(db, tx_data.account_id, tx_data.amount, tx_data.type, tx_data.target_account_id, is_reversal=False)
         if tx_data.loan_id and tx_data.type == 'expense': utils.update_loan_balance(db, tx_data.loan_id, tx_data.amount, is_reversal=False)
@@ -207,11 +228,20 @@ def update_loan(loan_id: int, loan: schemas.LoanUpdate, db: Session = Depends(da
 def get_categories(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): return db.query(models.Category).order_by(models.Category.name).all()
 @router.post("/categories")
 def create_category(cat: schemas.CategoryCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    if db.query(models.Category).filter(models.Category.name == cat.name).first(): raise HTTPException(status_code=400, detail="Kategoria istnieje")
-    db.add(models.Category(name=cat.name)); db.commit(); return {"status": "ok"}
+    if db.query(models.Category).filter(models.Category.name == cat.name).first():
+        raise HTTPException(status_code=400, detail="Kategoria istnieje")
+    db.add(models.Category(name=cat.name, monthly_limit=cat.monthly_limit))
+    db.commit()
+    return {"status": "ok"}
+
 @router.put("/categories/{cat_id}")
 def update_category(cat_id: int, cat: schemas.CategoryCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    db_cat = db.query(models.Category).filter(models.Category.id == cat_id).first(); db_cat.name = cat.name; db.commit(); return {"status": "updated"}
+    db_cat = db.query(models.Category).filter(models.Category.id == cat_id).first()
+    db_cat.name = cat.name
+    db_cat.monthly_limit = cat.monthly_limit
+    db.commit()
+    return {"status": "updated"}
+    
 @router.delete("/categories/{cat_id}")
 def delete_category(cat_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Category).filter(models.Category.id == cat_id).delete(); db.commit(); return {"status": "deleted"}
 @router.get("/settings/payday-overrides")

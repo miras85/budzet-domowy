@@ -14,6 +14,8 @@ class Category(Base):
     __tablename__ = "categories"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True)
+    # Scalono pole z drugiej definicji:
+    monthly_limit = Column(DECIMAL(10, 2), default=0.0)
 
 class Loan(Base):
     __tablename__ = "loans"
@@ -32,7 +34,6 @@ class Goal(Base):
     current_amount = Column(DECIMAL(10, 2), default=0.0)
     deadline = Column(Date)
     is_archived = Column(Boolean, default=False)
-    # NOWE POLE:
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
 class Transaction(Base):
@@ -61,9 +62,23 @@ class PaydayOverride(Base):
     month = Column(Integer)
     day = Column(Integer)
 
-# --- NOWE: UŻYTKOWNIK ---
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True)
     hashed_password = Column(String(255))
+
+class RecurringTransaction(Base):
+    __tablename__ = "recurring_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100))
+    amount = Column(DECIMAL(10, 2))
+    day_of_month = Column(Integer)
+    last_run_date = Column(Date, nullable=True)
+    is_active = Column(Boolean, default=True)
+    
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    
+    category = relationship("Category")
+    account = relationship("Account")

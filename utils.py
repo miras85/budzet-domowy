@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
+import calendar
 import models
 
 # --- LOGIKA DAT ---
@@ -49,10 +50,27 @@ def update_balance(db, account_id, amount, type, target_id, is_reversal):
             acc_target = db.query(models.Account).filter(models.Account.id == target_id).first()
             if acc_target: acc_target.balance = float(acc_target.balance) + val
 
+def add_months(sourcedate, months):
+    month = sourcedate.month - 1 + months
+    year = sourcedate.year + month // 12
+    month = month % 12 + 1
+    day = min(sourcedate.day, calendar.monthrange(year,month)[1])
+    return date(year, month, day)
+
 def update_loan_balance(db, loan_id, amount, is_reversal):
     if not loan_id: return
     loan = db.query(models.Loan).filter(models.Loan.id == loan_id).first()
     if not loan: return
+    
     val = float(amount)
-    if is_reversal: loan.remaining_amount = float(loan.remaining_amount) + val
-    else: loan.remaining_amount = float(loan.remaining_amount) - val
+    
+    if is_reversal:
+        # Cofnięcie transakcji: zwiększamy dług, cofamy datę
+        loan.remaining_amount = float(loan.remaining_amount) + val
+        if loan.next_payment_date:
+            loan.next_payment_date = add_months(loan.next_payment_date, -1)
+    else:
+        # Nowa transakcja: zmniejszamy dług, przesuwamy datę do przodu
+        loan.remaining_amount = float(loan.remaining_amount) - val
+        if loan.next_payment_date:
+            loan.next_payment_date = add_months(loan.next_payment_date, 1)
