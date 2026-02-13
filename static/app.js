@@ -39,7 +39,7 @@ createApp({
             dashboard: {
                 total_balance: 0,
                 disposable_balance: 0,
-                forecast_ror: 0,       // NOWE
+                forecast_ror: 0,
                 savings_realized: 0,
                 savings_rate: 0,
                 total_debt: 0,
@@ -131,7 +131,14 @@ createApp({
                 this.refreshAllData();
             } catch (e) { this.loginError = "Nieprawidłowy login lub hasło"; }
         },
-        logout() { this.token = null; localStorage.removeItem('token'); this.isLoggedIn = false; this.loginForm.username = ''; this.loginForm.password = ''; },
+        logout() {
+            this.token = null;
+            localStorage.removeItem('token');
+            this.isLoggedIn = false;
+            this.loginForm.username = '';
+            this.loginForm.password = '';
+            this.duePayments = [];
+        },
         async authFetch(url, options = {}) {
             if (!options.headers) options.headers = {};
             options.headers['Authorization'] = `Bearer ${this.token}`;
@@ -146,6 +153,13 @@ createApp({
         async submitRecurring() { await this.authFetch('/api/recurring', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.newRecurring) }); this.showAddRecurring = false; this.fetchRecurring(); },
         async deleteRecurring(id) { if(!confirm("Usunąć subskrypcję?")) return; await this.authFetch(`/api/recurring/${id}`, { method: 'DELETE' }); this.fetchRecurring(); },
         async processRecurring(pay) { await this.authFetch(`/api/recurring/${pay.id}/process`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ date: new Date().toISOString().split('T')[0] }) }); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.fetchData(); this.fetchAccounts(); },
+        
+        // NOWE: Metoda do pomijania płatności
+        async skipRecurring(pay) {
+            if(!confirm("Pominąć tę płatność w tym miesiącu?")) return;
+            await this.authFetch(`/api/recurring/${pay.id}/skip`, { method: 'POST' });
+            this.duePayments = this.duePayments.filter(p => p.id !== pay.id);
+        },
 
         async changePassword() { if(!this.security.oldPassword || !this.security.newPassword) return alert("Wpisz oba hasła"); try { await this.authFetch('/api/users/change-password', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ old_password: this.security.oldPassword, new_password: this.security.newPassword }) }); alert("Hasło zmienione pomyślnie!"); this.security.oldPassword = ''; this.security.newPassword = ''; } catch(e) { alert("Błąd: Sprawdź stare hasło"); } },
         async registerUser() { if(!this.security.newUsername || !this.security.newUserPass) return alert("Wpisz login i hasło"); try { await this.authFetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ username: this.security.newUsername, password: this.security.newUserPass }) }); alert(`Użytkownik ${this.security.newUsername} dodany!`); this.security.newUsername = ''; this.security.newUserPass = ''; } catch(e) { alert("Błąd: Taki użytkownik może już istnieć"); } },

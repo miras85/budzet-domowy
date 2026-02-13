@@ -33,24 +33,20 @@ def delete_recurring(id: int, db: Session = Depends(database.get_db), current_us
 def check_due_payments(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     """Sprawdza, które płatności powinny być wykonane w tym miesiącu, a jeszcze nie były."""
     today = date.today()
-    # Początek obecnego miesiąca
     start_of_month = date(today.year, today.month, 1)
     
     all_recs = db.query(models.RecurringTransaction).filter(models.RecurringTransaction.is_active == True).all()
     due = []
     
     for r in all_recs:
-        # Jeśli jeszcze nie było uruchamiane LUB ostatnie uruchomienie było przed tym miesiącem
         if not r.last_run_date or r.last_run_date < start_of_month:
-            # I jeśli dzień miesiąca już minął lub jest dzisiaj
-            if today.day >= r.day_of_month:
-                due.append({
-                    "id": r.id,
-                    "name": r.name,
-                    "amount": float(r.amount),
-                    "category": r.category.name if r.category else "Inne",
-                    "account_id": r.account_id
-                })
+            due.append({
+                "id": r.id,
+                "name": r.name,
+                "amount": float(r.amount),
+                "category": r.category.name if r.category else "Inne",
+                "account_id": r.account_id
+            })
     return due
 
 @router.post("/{id}/process")
@@ -58,18 +54,30 @@ def process_recurring(id: int, data: schemas.RecurringExecute, db: Session = Dep
     rec = db.query(models.RecurringTransaction).filter(models.RecurringTransaction.id == id).first()
     if not rec: raise HTTPException(status_code=404)
     
-    # 1. Dodaj transakcję
+    # 1. Dodaj transakcję jako PLANOWANĄ
     tx = models.Transaction(
-        description=rec.name, amount=rec.amount, date=data.date,
-        type="expense", account_id=rec.account_id, category_id=rec.category_id,
-        status="zrealizowana"
+        description=rec.name,
+        amount=rec.amount,
+        date=data.date,
+        type="expense",
+        account_id=rec.account_id,
+        category_id=rec.category_id,
+        status="planowana"
     )
     db.add(tx)
     
-    # 2. Zaktualizuj saldo
-    utils.update_balance(db, rec.account_id, rec.amount, "expense", None, False)
-    
-    # 3. Zaktualizuj datę ostatniego wykonania
+    # 2. Zaktualizuj datę ostatniego wykonania
     rec.last_run_date = data.date
     db.commit()
     return {"status": "processed"}
+
+# NOWE: Endpoint do pomijania płatności w tym miesiącu
+@router.post("/{id}/skip")
+def skip_recurring(id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    rec = db.query(models.RecurringTransaction).filter(models.RecurringTransaction.id == id).first()
+    if not rec: raise HTTPException(status_code=404)
+    
+    # Tylko aktualizujemy datę, nie tworzymy transakcji
+    rec.last_run_date = date.today()
+    db.commit()
+    return {"status": "skipped"}

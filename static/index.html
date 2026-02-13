@@ -13,7 +13,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/style.css?v=19">
+    <link rel="stylesheet" href="/static/style.css?v=23">
     
     <style>
         [v-cloak] { display: none !important; }
@@ -173,11 +173,11 @@
                         </div>
 
                         <!-- KARTA CELÓW -->
-                        <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-purple-500">
+                        <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-green-500">
                             <div>
                                 <div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele oszczędnościowe</div>
                                 <div class="text-sm text-slate-200">Wymagane w tym okresie:</div>
-                                <div class="text-xl font-bold text-purple-400">{{ formatMoney(dashboard.goals_monthly_need) }}</div>
+                                <div class="text-xl font-bold text-green-400">{{ formatMoney(dashboard.goals_monthly_need) }}</div>
                             </div>
                             <div class="text-right">
                                 <div class="text-xs text-slate-500">Odłożono łącznie</div>
@@ -285,18 +285,20 @@
                         </div>
                     </div>
                     <div class="space-y-4">
-                        <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-purple-500 relative overflow-hidden">
+                        <div v-for="goal in goals" :key="goal.id" class="glass-panel p-5 rounded-2xl border-l-4 border-green-500 relative overflow-hidden">
                             <div class="flex justify-between items-start mb-2 relative z-10">
                                 <div><div class="font-bold text-lg text-white">{{ goal.name }}</div><div class="text-xs text-slate-400">Termin: {{ formatDateShort(goal.deadline) }}</div></div>
-                                <div class="text-right"><div class="font-bold text-purple-400">{{ formatMoney(goal.current_amount) }}</div><div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div></div>
+                                <div class="text-right"><div class="font-bold text-green-400">{{ formatMoney(goal.current_amount) }}</div><div class="text-[10px] text-slate-500">z {{ formatMoney(goal.target_amount) }}</div></div>
                             </div>
-                            <div class="w-full bg-slate-700 h-2 rounded-full mb-2 overflow-hidden relative z-10"><div class="bg-purple-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div></div>
+                            <div class="w-full bg-slate-700 h-2 rounded-full mb-2 overflow-hidden relative z-10"><div class="bg-green-500 h-full" :style="{ width: Math.min(100, (goal.current_amount / goal.target_amount) * 100) + '%' }"></div></div>
                             
-                            <div v-if="goal.monthly_need > 0" class="flex justify-between items-center mb-3 relative z-10">
+                            <!-- POPRAWIONA LOGIKA WYŚWIETLANIA STATUSU -->
+                            <div v-if="goal.current_amount >= goal.target_amount" class="mb-3 text-xs text-green-400 font-bold text-right relative z-10">Cel osiągnięty! 🎉</div>
+                            <div v-else-if="goal.monthly_need > 0" class="flex justify-between items-center mb-3 relative z-10">
                                 <div class="text-[10px] text-slate-400 uppercase font-bold">Wymagane w tym cyklu:</div>
                                 <div class="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded">{{ formatMoney(goal.monthly_need) }}</div>
                             </div>
-                            <div v-else class="mb-3 text-xs text-green-400 font-bold text-right relative z-10">Cel osiągnięty! 🎉</div>
+                            <div v-else class="mb-3 text-xs text-blue-400 font-bold text-right relative z-10">Plan na ten miesiąc wykonany 👍</div>
                             
                             <div class="flex gap-2 mt-1 relative z-10"><button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Zasil</button><button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Przenieś</button><button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold border border-slate-700">×</button></div>
                         </div>
@@ -422,7 +424,29 @@
                     <!-- Sekcja Stałych Opłat -->
                     <div>
                         <div class="flex justify-between items-center mb-4"><h3 class="text-sm font-bold text-slate-400 uppercase">Stałe Opłaty (Subskrypcje)</h3><button @click="showAddRecurring = !showAddRecurring" class="text-blue-400 text-xs font-bold">{{ showAddRecurring ? 'Anuluj' : '+ Dodaj' }}</button></div>
-                        <div v-if="showAddRecurring" class="glass-panel p-4 rounded-2xl mb-4 space-y-3"><input v-model="newRecurring.name" placeholder="Nazwa (np. Netflix)" class="input-dark w-full p-3 rounded-xl text-sm"><input v-model="newRecurring.amount" type="number" placeholder="Kwota" class="input-dark w-full p-3 rounded-xl text-sm"><div class="flex gap-2"><input v-model="newRecurring.day_of_month" type="number" placeholder="Dzień" class="input-dark w-20 p-3 rounded-xl text-sm text-center"><input v-model="newRecurring.category_name" placeholder="Kategoria" list="catList" class="input-dark flex-1 p-3 rounded-xl text-sm"></div><select v-model="newRecurring.account_id" class="input-dark w-full p-3 rounded-xl text-sm"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option></select><button @click="submitRecurring" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz</button></div>
+                        <div v-if="showAddRecurring" class="glass-panel p-4 rounded-2xl mb-4 space-y-3">
+                            <input v-model="newRecurring.name" placeholder="Nazwa (np. Netflix)" class="input-dark w-full p-3 rounded-xl text-sm">
+                            <input v-model="newRecurring.amount" type="number" placeholder="Kwota" class="input-dark w-full p-3 rounded-xl text-sm">
+                            <div class="flex gap-2">
+                                <input v-model="newRecurring.day_of_month" type="number" placeholder="Dzień" class="input-dark w-20 p-3 rounded-xl text-sm text-center">
+                                
+                                <!-- WYBÓR KATEGORII DLA SUBSKRYPCJI -->
+                                <div class="flex-1 relative">
+                                    <div @click="showCategorySelector = !showCategorySelector" class="bg-slate-900 p-3 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer h-full">
+                                        <span :class="newRecurring.category_name ? 'text-white font-bold' : 'text-slate-500'">{{ newRecurring.category_name || 'Kategoria...' }}</span>
+                                        <span class="text-slate-400 text-xs">▼</span>
+                                    </div>
+                                    <div v-if="showCategorySelector" class="absolute top-full left-0 right-0 mt-2 bg-slate-800 p-3 rounded-xl border border-slate-700 z-50 shadow-xl">
+                                        <input v-model="categorySearch" placeholder="Szukaj..." class="w-full bg-slate-900 p-2 rounded-lg text-sm text-white mb-3 border border-slate-700 outline-none">
+                                        <div class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                                            <button v-for="cat in filteredCategories" :key="cat.id" @click="newRecurring.category_name = cat.name; showCategorySelector = false" class="cat-chip" :class="newRecurring.category_name === cat.name ? 'selected' : ''">{{ cat.name }}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <select v-model="newRecurring.account_id" class="input-dark w-full p-3 rounded-xl text-sm"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option></select>
+                            <button @click="submitRecurring" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz</button>
+                        </div>
                         <div class="space-y-3"><div v-for="rec in recurringList" :key="rec.id" class="glass-panel p-4 rounded-2xl flex justify-between items-center"><div><div class="font-bold text-white">{{ rec.name }}</div><div class="text-xs text-slate-400">{{ rec.day_of_month }}-go dnia miesiąca • {{ rec.category ? rec.category.name : '-' }}</div></div><div class="text-right"><div class="font-bold text-white">{{ formatMoney(rec.amount) }}</div><button @click="deleteRecurring(rec.id)" class="text-red-400 text-xs font-bold mt-1">USUŃ</button></div></div></div>
                     </div>
                 </div>
@@ -463,9 +487,9 @@
             <div v-if="editingLoan" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="editingLoan = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Edytuj Kredyt</h3><div class="space-y-3"><input v-model="editingLoan.name" placeholder="Nazwa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.next_payment_date" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="updateLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz zmiany</button></div></div></div>
             <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Z konta</label><select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.available) }}) {{ acc.is_savings ? '🔒' : '💳' }}</option></select><div v-if="isSourceROR" class="bg-blue-900/20 p-3 rounded-xl border border-blue-500/30"><label class="text-xs text-blue-300 uppercase font-bold mb-1 block">Automatyczny transfer na:</label><select v-model="fundData.target_savings_id" class="input-dark w-full max-w-full p-2 rounded-lg text-sm outline-none bg-slate-900 appearance-none"><option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }}</option></select><div class="text-[10px] text-blue-400 mt-1">System automatycznie przeleje środki na to konto oszczędnościowe.</div></div><input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil Cel</button></div></div></div>
             <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
-            <div v-if="duePayments.length > 0" class="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"><div class="glass-panel w-full max-w-md rounded-2xl p-6 border border-blue-500/50"><h3 class="text-xl font-bold text-white mb-2">🔔 Płatności cykliczne</h3><p class="text-sm text-slate-400 mb-4">Poniższe opłaty są wymagalne w tym miesiącu. Czy chcesz je dodać?</p><div class="space-y-2 max-h-[50vh] overflow-y-auto mb-4"><div v-for="pay in duePayments" :key="pay.id" class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div><div class="font-bold text-white text-sm">{{ pay.name }}</div><div class="text-xs text-slate-400">{{ pay.category }}</div></div><div class="flex items-center gap-3"><div class="font-bold text-white">{{ formatMoney(pay.amount) }}</div><button @click="processRecurring(pay)" class="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">✓</button></div></div></div><button @click="duePayments = []" class="w-full py-3 text-slate-400 text-sm font-bold">Zamknij (Zrobię to później)</button></div></div>
+            <div v-if="isLoggedIn && duePayments.length > 0" class="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"><div class="glass-panel w-full max-w-md rounded-2xl p-6 border border-blue-500/50"><h3 class="text-xl font-bold text-white mb-2">🔔 Płatności cykliczne</h3><p class="text-sm text-slate-400 mb-4">Poniższe opłaty są wymagalne w tym miesiącu. Czy chcesz je dodać?</p><div class="space-y-2 max-h-[50vh] overflow-y-auto mb-4"><div v-for="pay in duePayments" :key="pay.id" class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div><div class="font-bold text-white text-sm">{{ pay.name }}</div><div class="text-xs text-slate-400">{{ pay.category }}</div></div><div class="flex items-center gap-3"><div class="font-bold text-white">{{ formatMoney(pay.amount) }}</div><button @click="skipRecurring(pay)" class="bg-slate-700 text-slate-400 w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-slate-600 hover:text-white transition-colors" title="Pomiń w tym miesiącu">✕</button><button @click="processRecurring(pay)" class="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-green-500 transition-colors" title="Dodaj do planowanych">✓</button></div></div></div><button @click="duePayments = []" class="w-full py-3 text-slate-400 text-sm font-bold">Zamknij (Zrobię to później)</button></div></div>
         </div>
     </div>
-    <script src="/static/app.js?v=19"></script>
+    <script src="/static/app.js?v=23"></script>
 </body>
 </html>
