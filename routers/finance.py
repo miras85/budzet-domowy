@@ -75,24 +75,19 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), curre
                 check_offset += 1
                 if cycles_left > 120: break
             
-            # Logika identyczna jak w get_goals
-            goals_on_acc = db.query(func.count(models.Goal.id)).filter(models.Goal.account_id == g.account_id).scalar()
-            query = db.query(func.sum(models.Transaction.amount)).filter(
-                models.Transaction.type == 'transfer',
-                models.Transaction.target_account_id == g.account_id,
-                models.Transaction.date >= start_date,
-                models.Transaction.date <= end_date
-            )
-            if goals_on_acc > 1:
-                query = query.filter(models.Transaction.description.ilike(f"%{g.name}%"))
+            # Sumujemy GoalContribution w tym cyklu
+            contribs = db.query(func.sum(models.GoalContribution.amount)).filter(
+                models.GoalContribution.goal_id == g.id,
+                models.GoalContribution.date >= start_date,
+                models.GoalContribution.date <= end_date
+            ).scalar()
+            paid_this_cycle = float(contribs) if contribs else 0.0
             
-            txs = query.scalar()
-            paid_this_cycle = float(txs) if txs else 0.0
-            
-            # WZÓR: (Pozostało + Wpłacono) / Cykle - Wpłacono
-            total_remaining_for_period = remaining + paid_this_cycle
-            base_need = total_remaining_for_period / cycles_left
-            actual_need = base_need - paid_this_cycle
+            # MATEMATYKA:
+            virtual_start_amount = current - paid_this_cycle
+            total_missing_at_start = target - virtual_start_amount
+            rate_per_cycle = total_missing_at_start / cycles_left
+            actual_need = rate_per_cycle - paid_this_cycle
             
             if actual_need < 0: actual_need = 0
             goals_monthly_need += actual_need
@@ -235,30 +230,25 @@ def get_goals(db: Session = Depends(database.get_db), current_user: models.User 
                 cycles_left += 1; check_offset += 1
                 if cycles_left > 120: break
             
-            # NOWA LOGIKA:
-            # 1. Sprawdzamy ile celów jest przypisanych do tego konta
-            goals_on_acc = db.query(func.count(models.Goal.id)).filter(models.Goal.account_id == g.account_id).scalar()
+            # NOWA LOGIKA: Sumujemy GoalContribution w tym cyklu
+            contribs = db.query(func.sum(models.GoalContribution.amount)).filter(
+                models.GoalContribution.goal_id == g.id,
+                models.GoalContribution.date >= start_date,
+                models.GoalContribution.date <= end_date
+            ).scalar()
+            paid_this_cycle = float(contribs) if contribs else 0.0
             
-            # 2. Budujemy zapytanie o wpłaty (transfery na to konto w tym okresie)
-            query = db.query(func.sum(models.Transaction.amount)).filter(
-                models.Transaction.type == 'transfer',
-                models.Transaction.target_account_id == g.account_id,
-                models.Transaction.date >= start_date,
-                models.Transaction.date <= end_date
-            )
+            # 1. Stan na początek cyklu (wirtualny)
+            virtual_start_amount = float(g.current_amount) - paid_this_cycle
             
-            # 3. Jeśli na koncie jest WIĘCEJ niż 1 cel, musimy filtrować po nazwie
-            if goals_on_acc > 1:
-                query = query.filter(models.Transaction.description.ilike(f"%{g.name}%"))
-            # Jeśli jest tylko 1 cel, bierzemy WSZYSTKIE transfery na to konto jako wpłatę na ten cel
+            # 2. Ile brakowało na początku cyklu do pełnej kwoty
+            total_missing_at_start = float(g.target_amount) - virtual_start_amount
             
-            txs = query.scalar()
-            paid_this_cycle = float(txs) if txs else 0.0
+            # 3. Rata na ten cykl (Brakujące / Liczba cykli)
+            rate_per_cycle = total_missing_at_start / cycles_left
             
-            # 4. Obliczenia (Wzór: (Pozostało + Wpłacono) / Cykle - Wpłacono)
-            total_remaining_for_period = remaining + paid_this_cycle
-            base_need = total_remaining_for_period / cycles_left
-            actual_need = base_need - paid_this_cycle
+            # 4. Ile trzeba dopłacić (Rata - Już wpłacone)
+            actual_need = rate_per_cycle - paid_this_cycle
             
             if actual_need < 0:
                 actual_need = 0.0
@@ -300,6 +290,14 @@ def fund_goal(goal_id: int, fund: schemas.GoalFund, db: Session = Depends(databa
         db.add(transfer_tx)
         utils.update_balance(db, source_acc.id, fund.amount, "transfer", target_acc.id, is_reversal=False)
     
+    # ZAPISUJEMY WPŁATĘ W NOWEJ TABELI
+    contribution = models.GoalContribution(
+        goal_id=goal.id,
+        amount=fund.amount,
+        date=date.today()
+    )
+    db.add(contribution)
+    
     goal.current_amount = float(goal.current_amount) + fund.amount; db.commit(); return {"status": "funded"}
 
 @router.post("/goals/{goal_id}/transfer")
@@ -308,7 +306,16 @@ def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Sessio
     target = db.query(models.Goal).filter(models.Goal.id == transfer.target_goal_id).first()
     if not source or not target: raise HTTPException(status_code=404)
     if float(source.current_amount) < transfer.amount: raise HTTPException(status_code=400, detail="Brak środków")
-    source.current_amount = float(source.current_amount) - transfer.amount; target.current_amount = float(target.current_amount) + transfer.amount; db.commit(); return {"status": "transferred"}
+    
+    # Aktualizacja sald celów
+    source.current_amount = float(source.current_amount) - transfer.amount
+    target.current_amount = float(target.current_amount) + transfer.amount
+    
+    # Rejestracja przesunięcia w historii (ujemna dla źródła, dodatnia dla celu)
+    db.add(models.GoalContribution(goal_id=source.id, amount=-transfer.amount, date=date.today()))
+    db.add(models.GoalContribution(goal_id=target.id, amount=transfer.amount, date=date.today()))
+    
+    db.commit(); return {"status": "transferred"}
 
 @router.delete("/goals/{goal_id}")
 def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Goal).filter(models.Goal.id == goal_id).delete(); db.commit(); return {"status": "deleted"}

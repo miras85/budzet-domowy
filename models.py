@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DECIMAL, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
+from datetime import date
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -34,6 +35,16 @@ class Goal(Base):
     deadline = Column(Date)
     is_archived = Column(Boolean, default=False)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+
+# NOWA TABELA: Historia wpłat na cele
+class GoalContribution(Base):
+    __tablename__ = "goal_contributions"
+    id = Column(Integer, primary_key=True, index=True)
+    goal_id = Column(Integer, ForeignKey("goals.id"))
+    amount = Column(DECIMAL(10, 2))
+    date = Column(Date, default=date.today)
+    
+    goal = relationship("Goal")
 
 class Transaction(Base):
     __tablename__ = "transactions"
