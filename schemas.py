@@ -76,3 +76,8 @@ class GoalFund(BaseModel):
 class GoalTransfer(BaseModel):
     amount: float
     target_goal_id: int
+    
+
+class GoalWithdraw(BaseModel):
+    amount: float
+    target_account_id: int

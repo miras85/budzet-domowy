@@ -67,6 +67,8 @@ createApp({
             newRecurring: { name: '', amount: '', day_of_month: '', category_name: '', account_id: null },
             newOverride: { year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: 25 },
             fundData: { source_account_id: null, target_savings_id: null, amount: '' },
+            withdrawingGoal: null,
+            withdrawData: { target_account_id: null, amount: '' },
             transferData: { target_goal_id: null, amount: '' }
         }
     },
@@ -139,6 +141,9 @@ createApp({
             this.loginForm.password = '';
             this.duePayments = [];
         },
+        
+        
+        
         async authFetch(url, options = {}) {
             if (!options.headers) options.headers = {};
             options.headers['Authorization'] = `Bearer ${this.token}`;
@@ -312,6 +317,26 @@ createApp({
             const defaultTarget = this.savingsAccounts[0]?.id;
             this.fundData = { source_account_id: defaultSource, target_savings_id: defaultTarget, amount: '' };
         },
+        
+        openWithdrawGoal(goal) {
+                    this.withdrawingGoal = goal;
+                    // Domyślnie wybierz pierwsze konto ROR (nie oszczędnościowe) jako cel wypłaty
+                    const defaultTarget = this.accounts.find(a => !a.is_savings) || this.accounts[0];
+                    this.withdrawData = { target_account_id: defaultTarget ? defaultTarget.id : null, amount: '' };
+                },
+                async submitWithdrawGoal() {
+                    if (!this.withdrawData.amount || !this.withdrawData.target_account_id) return alert("Wypełnij wszystkie pola");
+                    await this.authFetch(`/api/goals/${this.withdrawingGoal.id}/withdraw`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.withdrawData)
+                    });
+                    this.withdrawingGoal = null;
+                    this.fetchGoals();
+                    this.fetchAccounts(); // Ważne, bo salda mogły się zmienić
+                },
+        
+        
         async submitFundGoal() { await this.authFetch(`/api/goals/${this.fundingGoal.id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.fundData) }); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); },
         openTransferGoal(goal) { this.transferingGoal = goal; this.transferData = { target_goal_id: null, amount: '' }; },
         async submitTransferGoal() { await this.authFetch(`/api/goals/${this.transferingGoal.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.transferData) }); this.transferingGoal = null; this.fetchGoals(); }

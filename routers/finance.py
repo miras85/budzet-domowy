@@ -317,6 +317,52 @@ def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Sessio
     
     db.commit(); return {"status": "transferred"}
 
+
+@router.post("/goals/{goal_id}/withdraw")
+def withdraw_goal_funds(goal_id: int, withdraw: schemas.GoalWithdraw, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
+    if not goal: raise HTTPException(status_code=404)
+    
+    if float(goal.current_amount) < withdraw.amount:
+        raise HTTPException(status_code=400, detail="Brak wystarczających środków na celu")
+    
+    target_acc = db.query(models.Account).filter(models.Account.id == withdraw.target_account_id).first()
+    if not target_acc: raise HTTPException(status_code=404, detail="Konto docelowe nie istnieje")
+
+    # 1. Aktualizacja celu
+    goal.current_amount = float(goal.current_amount) - withdraw.amount
+    
+    # 2. Rejestracja w historii celu (ujemna kwota)
+    db.add(models.GoalContribution(goal_id=goal.id, amount=-withdraw.amount, date=date.today()))
+    
+    # 3. Logika transferu pieniędzy
+    # Jeśli wypłacamy na INNE konto (np. z Oszczędnościowego na ROR), musimy zrobić transfer
+    if goal.account_id != target_acc.id:
+        source_acc = db.query(models.Account).filter(models.Account.id == goal.account_id).first()
+        
+        # Tworzymy transakcję transferu
+        tx = models.Transaction(
+            amount=withdraw.amount,
+            description=f"Wypłata z celu: {goal.name}",
+            date=date.today(),
+            type="transfer",
+            account_id=source_acc.id,
+            target_account_id=target_acc.id,
+            status="zrealizowana"
+        )
+        db.add(tx)
+        
+        # Aktualizujemy salda fizyczne kont
+        utils.update_balance(db, source_acc.id, withdraw.amount, "transfer", target_acc.id, is_reversal=False)
+    
+    # Jeśli wypłacamy na TO SAMO konto (po prostu uwalniamy środki z celu),
+    # fizyczne saldo konta się nie zmienia, zmienia się tylko "dostępne" (bo cel maleje).
+    # Nie robimy nic więcej.
+
+    db.commit()
+    return {"status": "withdrawn"}
+
+
 @router.delete("/goals/{goal_id}")
 def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Goal).filter(models.Goal.id == goal_id).delete(); db.commit(); return {"status": "deleted"}
 
