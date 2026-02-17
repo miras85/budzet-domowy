@@ -53,7 +53,13 @@ createApp({
             touchStartX: 0,
             touchEndX: 0,
             trendChartInstance: null,
+            doughnutChartInstance: null,
             trendData: [],
+            chartColors: [
+                    '#ef4444', '#f97316', '#eab308', '#84cc16', '#10b981',
+                    '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'
+                ],
+                selectedChartSegment: null, // Do przechowywania klikniętej kategorii
             
             dashboard: {
                 total_balance: 0,
@@ -248,22 +254,85 @@ createApp({
         async fetchOverrides() { if(this.isLoggedIn) this.overrides = await (await this.authFetch('/api/settings/payday-overrides')).json(); },
         
         async renderChart() {
-            const ctx = document.getElementById('trendChart');
-            if (!ctx) return;
-            const trendData = await (await this.authFetch('/api/stats/trend')).json();
-            if (this.trendChartInstance) this.trendChartInstance.destroy();
-            this.trendChartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: trendData.map(d => d.label),
-                    datasets: [
-                        { label: 'Przychody', data: trendData.map(d => d.income), borderColor: '#4ade80', backgroundColor: 'rgba(74, 222, 128, 0.1)', tension: 0.4, fill: true },
-                        { label: 'Wydatki', data: trendData.map(d => d.expense), borderColor: '#f87171', backgroundColor: 'rgba(248, 113, 113, 0.1)', tension: 0.4, fill: true }
-                    ]
+                    // 1. WYKRES TRENDU (Liniowy) - Pobieramy dane z API
+                    const ctxTrend = document.getElementById('trendChart');
+                    if (ctxTrend) {
+                        const trendData = await (await this.authFetch('/api/stats/trend')).json();
+                        if (this.trendChartInstance) this.trendChartInstance.destroy();
+                        
+                        this.trendChartInstance = new Chart(ctxTrend, {
+                            type: 'line',
+                            data: {
+                                labels: trendData.map(d => d.label),
+                                datasets: [
+                                    { label: 'Przychody', data: trendData.map(d => d.income), borderColor: '#4ade80', backgroundColor: 'rgba(74, 222, 128, 0.1)', tension: 0.4, fill: true },
+                                    { label: 'Wydatki', data: trendData.map(d => d.expense), borderColor: '#f87171', backgroundColor: 'rgba(248, 113, 113, 0.1)', tension: 0.4, fill: true }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
+                                scales: {
+                                    y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+                                    x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+                                }
+                            }
+                        });
+                    }
+
+            // 2. WYKRES KOŁOWY (Doughnut)
+                        const ctxDoughnut = document.getElementById('expenseDoughnut');
+                        if (ctxDoughnut) {
+                            if (this.doughnutChartInstance) {
+                                this.doughnutChartInstance.destroy();
+                                this.doughnutChartInstance = null;
+                            }
+
+                            const labels = this.expenseCategories.map(c => c.name);
+                            const data = this.expenseCategories.map(c => Math.abs(c.total));
+                            
+                            // Przypisz kolory cyklicznie (jeśli kategorii > 10)
+                            const bgColors = this.expenseCategories.map((_, i) => this.chartColors[i % this.chartColors.length]);
+
+                            this.doughnutChartInstance = new Chart(ctxDoughnut, {
+                                type: 'doughnut',
+                                data: {
+                                    labels: labels,
+                                    datasets: [{
+                                        data: data,
+                                        backgroundColor: bgColors,
+                                        borderWidth: 0,
+                                        hoverOffset: 10
+                                    }]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    cutout: '75%',
+                                    plugins: {
+                                        legend: { display: false },
+                                        tooltip: { enabled: false } // Wyłączamy domyślny tooltip, bo mamy tekst w środku!
+                                    },
+                                    onClick: (evt, elements) => {
+                                        if (elements.length > 0) {
+                                            const index = elements[0].index;
+                                            // Zapisz wybraną kategorię do zmiennej Vue
+                                            this.selectedChartSegment = {
+                                                name: labels[index],
+                                                amount: data[index],
+                                                color: bgColors[index]
+                                            };
+                                        } else {
+                                            // Kliknięcie w tło = reset do "Razem"
+                                            this.selectedChartSegment = null;
+                                        }
+                                    }
+                                }
+                            });
+                        }
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } } }
-            });
-        },
+        
         changePeriod(delta) { this.transitionName = delta > 0 ? 'slide-next' : 'slide-prev'; this.periodOffset += delta; this.fetchData(); },
         detectCategory() {
             if(this.editingTxId) return;
