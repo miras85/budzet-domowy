@@ -3,6 +3,10 @@ const { createApp } = Vue
 createApp({
     data() {
         return {
+            // --- SYSTEM POWIADOMIEŃ ---
+            toasts: [],
+            
+            // --- ISTNIEJĄCE DANE ---
             isLoggedIn: false,
             loginForm: { username: '', password: '' },
             loginError: '',
@@ -23,28 +27,20 @@ createApp({
             fundingGoal: null,
             transferingGoal: null,
             selectedCategory: null,
-            importData: null,
-            importTargetAccountId: null,
             
-            // NOWE: Wypłata z celu
             withdrawingGoal: null,
             withdrawData: { target_account_id: null, amount: '' },
 
-            // NOWE: Wyszukiwarka
             showSearch: false,
-            searchCriteria: {
-                q: '',
-                date_from: '',
-                date_to: '',
-                category_id: null,
-                account_id: null,
-                type: 'all',
-                min_amount: '',
-                max_amount: ''
-            },
+            searchCriteria: { q: '', date_from: '', date_to: '', category_id: null, account_id: null, type: 'all', min_amount: '', max_amount: '' },
             searchResults: null,
             searchSummary: { income: 0, expense: 0, balance: 0, count: 0 },
             
+            // IMPORT
+            importAccountId: null,
+            importData: null,
+            importTargetAccountId: null,
+
             filterStatus: 'all',
             filterAccount: null,
             isPlanned: false,
@@ -57,29 +53,10 @@ createApp({
             trendChartInstance: null,
             doughnutChartInstance: null,
             trendData: [],
-            chartColors: [
-                    '#ef4444', '#f97316', '#eab308', '#84cc16', '#10b981',
-                    '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'
-                ],
-                selectedChartSegment: null, // Do przechowywania klikniętej kategorii
+            chartColors: ['#ef4444', '#f97316', '#eab308', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'],
+            selectedChartSegment: null,
             
-            dashboard: {
-                total_balance: 0,
-                disposable_balance: 0,
-                forecast_ror: 0,
-                savings_realized: 0,
-                savings_rate: 0,
-                total_debt: 0,
-                monthly_income_realized: 0,
-                monthly_income_forecast: 0,
-                monthly_expenses_realized: 0,
-                monthly_expenses_forecast: 0,
-                goals_monthly_need: 0,
-                goals_total_saved: 0,
-                recent_transactions: [],
-                period_start: '',
-                period_end: ''
-            },
+            dashboard: { total_balance: 0, disposable_balance: 0, forecast_ror: 0, savings_realized: 0, savings_rate: 0, total_debt: 0, monthly_income_realized: 0, monthly_income_forecast: 0, monthly_expenses_realized: 0, monthly_expenses_forecast: 0, goals_monthly_need: 0, goals_total_saved: 0, recent_transactions: [], period_start: '', period_end: '' },
             accounts: [],
             categories: [],
             loansData: { loans: [], upcoming: [] },
@@ -143,6 +120,21 @@ createApp({
     },
     watch: { viewMode(newVal) { if (newVal === 'chart') this.renderChart(); } },
     methods: {
+        // --- NOWA METODA: POWIADOMIENIA ---
+        notify(type, message) {
+            const id = Date.now();
+            const title = type === 'success' ? 'Sukces' : (type === 'error' ? 'Błąd' : 'Info');
+            this.toasts.push({ id, type, title, message });
+            // Auto-usuwanie po 4 sekundach
+            setTimeout(() => {
+                this.removeToast(id);
+            }, 4000);
+        },
+        removeToast(id) {
+            this.toasts = this.toasts.filter(t => t.id !== id);
+        },
+        // ----------------------------------
+
         async login() {
             this.loginError = '';
             const formData = new FormData();
@@ -156,6 +148,7 @@ createApp({
                 localStorage.setItem('token', this.token);
                 this.isLoggedIn = true;
                 this.refreshAllData();
+                this.notify('success', 'Zalogowano pomyślnie');
             } catch (e) { this.loginError = "Nieprawidłowy login lub hasło"; }
         },
         logout() {
@@ -165,6 +158,7 @@ createApp({
             this.loginForm.username = '';
             this.loginForm.password = '';
             this.duePayments = [];
+            this.notify('info', 'Wylogowano');
         },
         async authFetch(url, options = {}) {
             if (!options.headers) options.headers = {};
@@ -174,20 +168,21 @@ createApp({
             return res;
         },
         refreshAllData() { this.fetchData(); this.fetchAccounts(); this.fetchLoans(); this.fetchGoals(); this.fetchCategories(); this.fetchOverrides(); this.fetchRecurring(); this.checkDuePayments(); },
-        
+
         async fetchRecurring() { if(this.isLoggedIn) this.recurringList = await (await this.authFetch('/api/recurring')).json(); },
         async checkDuePayments() { if(this.isLoggedIn) this.duePayments = await (await this.authFetch('/api/recurring/check')).json(); },
-        async submitRecurring() { await this.authFetch('/api/recurring', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.newRecurring) }); this.showAddRecurring = false; this.fetchRecurring(); },
-        async deleteRecurring(id) { if(!confirm("Usunąć subskrypcję?")) return; await this.authFetch(`/api/recurring/${id}`, { method: 'DELETE' }); this.fetchRecurring(); },
-        async processRecurring(pay) { await this.authFetch(`/api/recurring/${pay.id}/process`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ date: new Date().toISOString().split('T')[0] }) }); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.fetchData(); this.fetchAccounts(); },
+        async submitRecurring() { await this.authFetch('/api/recurring', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.newRecurring) }); this.showAddRecurring = false; this.fetchRecurring(); this.notify('success', 'Dodano subskrypcję'); },
+        async deleteRecurring(id) { if(!confirm("Usunąć subskrypcję?")) return; await this.authFetch(`/api/recurring/${id}`, { method: 'DELETE' }); this.fetchRecurring(); this.notify('info', 'Usunięto subskrypcję'); },
+        async processRecurring(pay) { await this.authFetch(`/api/recurring/${pay.id}/process`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ date: new Date().toISOString().split('T')[0] }) }); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.fetchData(); this.fetchAccounts(); this.notify('success', 'Zaksięgowano płatność'); },
         async skipRecurring(pay) {
             if(!confirm("Pominąć tę płatność w tym miesiącu?")) return;
             await this.authFetch(`/api/recurring/${pay.id}/skip`, { method: 'POST' });
             this.duePayments = this.duePayments.filter(p => p.id !== pay.id);
+            this.notify('info', 'Pominięto płatność');
         },
 
-        async changePassword() { if(!this.security.oldPassword || !this.security.newPassword) return alert("Wpisz oba hasła"); try { await this.authFetch('/api/users/change-password', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ old_password: this.security.oldPassword, new_password: this.security.newPassword }) }); alert("Hasło zmienione pomyślnie!"); this.security.oldPassword = ''; this.security.newPassword = ''; } catch(e) { alert("Błąd: Sprawdź stare hasło"); } },
-        async registerUser() { if(!this.security.newUsername || !this.security.newUserPass) return alert("Wpisz login i hasło"); try { await this.authFetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ username: this.security.newUsername, password: this.security.newUserPass }) }); alert(`Użytkownik ${this.security.newUsername} dodany!`); this.security.newUsername = ''; this.security.newUserPass = ''; } catch(e) { alert("Błąd: Taki użytkownik może już istnieć"); } },
+        async changePassword() { if(!this.security.oldPassword || !this.security.newPassword) return this.notify('error', "Wpisz oba hasła"); try { await this.authFetch('/api/users/change-password', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ old_password: this.security.oldPassword, new_password: this.security.newPassword }) }); this.notify('success', "Hasło zmienione pomyślnie!"); this.security.oldPassword = ''; this.security.newPassword = ''; } catch(e) { this.notify('error', "Błąd: Sprawdź stare hasło"); } },
+        async registerUser() { if(!this.security.newUsername || !this.security.newUserPass) return this.notify('error', "Wpisz login i hasło"); try { await this.authFetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ username: this.security.newUsername, password: this.security.newUserPass }) }); this.notify('success', `Użytkownik ${this.security.newUsername} dodany!`); this.security.newUsername = ''; this.security.newUserPass = ''; } catch(e) { this.notify('error', "Błąd: Taki użytkownik może już istnieć"); } },
 
         getAccountName(id) { const acc = this.accounts.find(a => a.id === id); return acc ? acc.name : ''; },
         formatMoney(value) { return parseFloat(value).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł'; },
@@ -227,6 +222,7 @@ createApp({
             this.currentTab = 'add';
             this.selectedCategory = null;
             window.scrollTo(0,0);
+            this.notify('info', 'Skopiowano do formularza');
         },
 
         handleLoanChange() {
@@ -238,14 +234,14 @@ createApp({
         },
 
         async updateCategoryLimit(cat) {
-            if (!cat.id) return alert("Nie można edytować tej kategorii (brak ID).");
+            if (!cat.id) return this.notify('error', "Nie można edytować tej kategorii (brak ID).");
             await this.authFetch(`/api/categories/${cat.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: cat.name, monthly_limit: parseFloat(cat.limit) })
             });
             this.fetchCategories();
-            alert("Limit zapisany!");
+            this.notify('success', "Limit zapisany!");
         },
 
         async fetchData() { if (!this.isLoggedIn) return; try { this.dashboard = await (await this.authFetch(`/api/dashboard?offset=${this.periodOffset}`)).json(); if (this.accounts.length > 0 && !this.newTx.account_id) this.newTx.account_id = this.accounts[0].id; if (this.viewMode === 'chart') this.renderChart(); } catch (e) { console.error(e); } },
@@ -254,86 +250,80 @@ createApp({
         async fetchGoals() { if(this.isLoggedIn) this.goals = await (await this.authFetch('/api/goals')).json(); },
         async fetchCategories() { if(this.isLoggedIn) this.categories = await (await this.authFetch('/api/categories')).json(); },
         async fetchOverrides() { if(this.isLoggedIn) this.overrides = await (await this.authFetch('/api/settings/payday-overrides')).json(); },
-        
+
         async renderChart() {
-                    // 1. WYKRES TRENDU (Liniowy) - Pobieramy dane z API
-                    const ctxTrend = document.getElementById('trendChart');
-                    if (ctxTrend) {
-                        const trendData = await (await this.authFetch('/api/stats/trend')).json();
-                        if (this.trendChartInstance) this.trendChartInstance.destroy();
-                        
-                        this.trendChartInstance = new Chart(ctxTrend, {
-                            type: 'line',
-                            data: {
-                                labels: trendData.map(d => d.label),
-                                datasets: [
-                                    { label: 'Przychody', data: trendData.map(d => d.income), borderColor: '#4ade80', backgroundColor: 'rgba(74, 222, 128, 0.1)', tension: 0.4, fill: true },
-                                    { label: 'Wydatki', data: trendData.map(d => d.expense), borderColor: '#f87171', backgroundColor: 'rgba(248, 113, 113, 0.1)', tension: 0.4, fill: true }
-                                ]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
-                                scales: {
-                                    y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-                                    x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }
-                                }
-                            }
-                        });
-                    }
-
-            // 2. WYKRES KOŁOWY (Doughnut)
-                        const ctxDoughnut = document.getElementById('expenseDoughnut');
-                        if (ctxDoughnut) {
-                            if (this.doughnutChartInstance) {
-                                this.doughnutChartInstance.destroy();
-                                this.doughnutChartInstance = null;
-                            }
-
-                            const labels = this.expenseCategories.map(c => c.name);
-                            const data = this.expenseCategories.map(c => Math.abs(c.total));
-                            
-                            // Przypisz kolory cyklicznie (jeśli kategorii > 10)
-                            const bgColors = this.expenseCategories.map((_, i) => this.chartColors[i % this.chartColors.length]);
-
-                            this.doughnutChartInstance = new Chart(ctxDoughnut, {
-                                type: 'doughnut',
-                                data: {
-                                    labels: labels,
-                                    datasets: [{
-                                        data: data,
-                                        backgroundColor: bgColors,
-                                        borderWidth: 0,
-                                        hoverOffset: 10
-                                    }]
-                                },
-                                options: {
-                                    responsive: true,
-                                    maintainAspectRatio: false,
-                                    cutout: '75%',
-                                    plugins: {
-                                        legend: { display: false },
-                                        tooltip: { enabled: false } // Wyłączamy domyślny tooltip, bo mamy tekst w środku!
-                                    },
-                                    onClick: (evt, elements) => {
-                                        if (elements.length > 0) {
-                                            const index = elements[0].index;
-                                            // Zapisz wybraną kategorię do zmiennej Vue
-                                            this.selectedChartSegment = {
-                                                name: labels[index],
-                                                amount: data[index],
-                                                color: bgColors[index]
-                                            };
-                                        } else {
-                                            // Kliknięcie w tło = reset do "Razem"
-                                            this.selectedChartSegment = null;
-                                        }
-                                    }
-                                }
-                            });
+            const ctxTrend = document.getElementById('trendChart');
+            if (ctxTrend) {
+                const trendData = await (await this.authFetch('/api/stats/trend')).json();
+                if (this.trendChartInstance) this.trendChartInstance.destroy();
+                
+                this.trendChartInstance = new Chart(ctxTrend, {
+                    type: 'line',
+                    data: {
+                        labels: trendData.map(d => d.label),
+                        datasets: [
+                            { label: 'Przychody', data: trendData.map(d => d.income), borderColor: '#4ade80', backgroundColor: 'rgba(74, 222, 128, 0.1)', tension: 0.4, fill: true },
+                            { label: 'Wydatki', data: trendData.map(d => d.expense), borderColor: '#f87171', backgroundColor: 'rgba(248, 113, 113, 0.1)', tension: 0.4, fill: true }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
+                        scales: {
+                            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }
                         }
-                },
+                    }
+                });
+            }
+
+            const ctxDoughnut = document.getElementById('expenseDoughnut');
+            if (ctxDoughnut) {
+                if (this.doughnutChartInstance) {
+                    this.doughnutChartInstance.destroy();
+                    this.doughnutChartInstance = null;
+                }
+
+                const labels = this.expenseCategories.map(c => c.name);
+                const data = this.expenseCategories.map(c => Math.abs(c.total));
+                const bgColors = this.expenseCategories.map((_, i) => this.chartColors[i % this.chartColors.length]);
+
+                this.doughnutChartInstance = new Chart(ctxDoughnut, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: bgColors,
+                            borderWidth: 0,
+                            hoverOffset: 10
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '75%',
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false }
+                        },
+                        onClick: (evt, elements) => {
+                            if (elements.length > 0) {
+                                const index = elements[0].index;
+                                this.selectedChartSegment = {
+                                    name: labels[index],
+                                    amount: data[index],
+                                    color: bgColors[index]
+                                };
+                            } else {
+                                this.selectedChartSegment = null;
+                            }
+                        }
+                    }
+                });
+            }
+        },
         
         changePeriod(delta) { this.transitionName = delta > 0 ? 'slide-next' : 'slide-prev'; this.periodOffset += delta; this.fetchData(); },
         detectCategory() {
@@ -354,20 +344,21 @@ createApp({
             this.newTx = { description: '', amount: '', type: 'expense', account_id: this.accounts[0]?.id, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] };
         },
         async submitTransaction() {
-            if(!this.newTx.account_id) return alert("Wybierz konto!");
-            if(this.newTx.type === 'transfer' && !this.newTx.target_account_id) return alert("Wybierz konto docelowe!");
-            if(!this.newTx.description) return alert("Opis jest wymagany!");
+            if(!this.newTx.account_id) return this.notify('error', "Wybierz konto!");
+            if(this.newTx.type === 'transfer' && !this.newTx.target_account_id) return this.notify('error', "Wybierz konto docelowe!");
+            if(!this.newTx.description) return this.notify('error', "Opis jest wymagany!");
 
             const url = this.editingTxId ? `/api/transactions/${this.editingTxId}` : '/api/transactions';
             const method = this.editingTxId ? 'PUT' : 'POST';
             const payload = { ...this.newTx, status: this.isPlanned ? 'planowana' : 'zrealizowana' };
             await this.authFetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             this.resetForm(); this.currentTab = 'dashboard'; this.fetchData(); this.fetchAccounts();
+            this.notify('success', this.editingTxId ? 'Zaktualizowano transakcję' : 'Dodano transakcję');
         },
         
-        async realizeTx(tx) { const payload = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: tx.date.split('T')[0], status: 'zrealizowana' }; await this.authFetch(`/api/transactions/${tx.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); this.fetchData(); this.fetchAccounts(); },
-        async deleteTx(id) { if(!confirm("Usunąć transakcję?")) return; await this.authFetch(`/api/transactions/${id}`, { method: 'DELETE' }); this.fetchData(); this.fetchAccounts(); },
-        async deleteAccount(id) { if(!confirm("Usunąć konto i jego historię?")) return; await this.authFetch(`/api/accounts/${id}`, { method: 'DELETE' }); this.fetchAccounts(); this.fetchData(); },
+        async realizeTx(tx) { const payload = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: tx.date.split('T')[0], status: 'zrealizowana' }; await this.authFetch(`/api/transactions/${tx.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); this.fetchData(); this.fetchAccounts(); this.notify('success', 'Transakcja zrealizowana'); },
+        async deleteTx(id) { if(!confirm("Usunąć transakcję?")) return; await this.authFetch(`/api/transactions/${id}`, { method: 'DELETE' }); this.fetchData(); this.fetchAccounts(); this.notify('info', 'Usunięto transakcję'); },
+        async deleteAccount(id) { if(!confirm("Usunąć konto i jego historię?")) return; await this.authFetch(`/api/accounts/${id}`, { method: 'DELETE' }); this.fetchAccounts(); this.fetchData(); this.notify('info', 'Usunięto konto'); },
         async editAccount(acc) {
             const newName = prompt("Nazwa konta:", acc.name);
             if(!newName) return;
@@ -375,44 +366,45 @@ createApp({
             const isSavings = confirm("Czy to konto oszczędnościowe (do celów)?");
             await this.authFetch(`/api/accounts/${acc.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName, type: acc.type, balance: parseFloat(newBalance), is_savings: isSavings }) });
             this.fetchAccounts();
+            this.notify('success', 'Zaktualizowano konto');
         },
-        
-        async submitLoan() { await this.authFetch('/api/loans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newLoan) }); this.showAddLoan = false; this.fetchLoans(); },
+
+        async submitLoan() { await this.authFetch('/api/loans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newLoan) }); this.showAddLoan = false; this.fetchLoans(); this.notify('success', 'Dodano kredyt'); },
         editLoan(loan) { this.editingLoan = { ...loan, total_amount: loan.total, remaining_amount: loan.remaining, monthly_payment: loan.monthly, next_payment_date: loan.next_date }; },
-        async updateLoan() { await this.authFetch(`/api/loans/${this.editingLoan.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.editingLoan) }); this.editingLoan = null; this.fetchLoans(); },
-        async createTestAccount() { const name = prompt("Nazwa konta:"); if(name) { await this.authFetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, type: "bank", balance: 0, is_savings: false }) }); this.fetchAccounts(); } },
-        async addOverride() { await this.authFetch('/api/settings/payday-overrides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newOverride) }); this.fetchOverrides(); },
-        async deleteOverride(id) { if(!confirm("Usunąć wyjątek?")) return; await this.authFetch(`/api/settings/payday-overrides/${id}`, { method: 'DELETE' }); this.fetchOverrides(); },
-        async addCategory() { if(!this.newCategoryName) return; await this.authFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: this.newCategoryName }) }); this.newCategoryName = ''; this.fetchCategories(); },
-        async deleteCategory(id) { if(!confirm("Usunąć kategorię?")) return; await this.authFetch(`/api/categories/${id}`, { method: 'DELETE' }); this.fetchCategories(); },
+        async updateLoan() { await this.authFetch(`/api/loans/${this.editingLoan.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.editingLoan) }); this.editingLoan = null; this.fetchLoans(); this.notify('success', 'Zaktualizowano kredyt'); },
+        async createTestAccount() { const name = prompt("Nazwa konta:"); if(name) { await this.authFetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, type: "bank", balance: 0, is_savings: false }) }); this.fetchAccounts(); this.notify('success', 'Utworzono konto'); } },
+        async addOverride() { await this.authFetch('/api/settings/payday-overrides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newOverride) }); this.fetchOverrides(); this.notify('success', 'Dodano wyjątek'); },
+        async deleteOverride(id) { if(!confirm("Usunąć wyjątek?")) return; await this.authFetch(`/api/settings/payday-overrides/${id}`, { method: 'DELETE' }); this.fetchOverrides(); this.notify('info', 'Usunięto wyjątek'); },
+        async addCategory() { if(!this.newCategoryName) return; await this.authFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: this.newCategoryName }) }); this.newCategoryName = ''; this.fetchCategories(); this.notify('success', 'Dodano kategorię'); },
+        async deleteCategory(id) { if(!confirm("Usunąć kategorię?")) return; await this.authFetch(`/api/categories/${id}`, { method: 'DELETE' }); this.fetchCategories(); this.notify('info', 'Usunięto kategorię'); },
         
         async submitGoal() {
-            if (!this.newGoal.account_id) return alert("Wybierz konto oszczędnościowe dla tego celu!");
+            if (!this.newGoal.account_id) return this.notify('error', "Wybierz konto oszczędnościowe dla tego celu!");
             await this.authFetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newGoal) });
             this.showAddGoal = false;
             this.fetchGoals();
             this.newGoal = { name: '', target_amount: '', deadline: new Date().toISOString().split('T')[0], account_id: null };
+            this.notify('success', 'Utworzono cel');
         },
-        async deleteGoal(id) { if(!confirm("Usunąć cel?")) return; await this.authFetch(`/api/goals/${id}`, { method: 'DELETE' }); this.fetchGoals(); },
+        async deleteGoal(id) { if(!confirm("Usunąć cel?")) return; await this.authFetch(`/api/goals/${id}`, { method: 'DELETE' }); this.fetchGoals(); this.notify('info', 'Usunięto cel'); },
         openFundGoal(goal) {
             this.fundingGoal = goal;
             const defaultSource = this.accounts[0]?.id;
             const defaultTarget = this.savingsAccounts[0]?.id;
             this.fundData = { source_account_id: defaultSource, target_savings_id: defaultTarget, amount: '' };
         },
-        async submitFundGoal() { await this.authFetch(`/api/goals/${this.fundingGoal.id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.fundData) }); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); },
+        async submitFundGoal() { await this.authFetch(`/api/goals/${this.fundingGoal.id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.fundData) }); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); this.notify('success', 'Zasilono cel'); },
         openTransferGoal(goal) { this.transferingGoal = goal; this.transferData = { target_goal_id: null, amount: '' }; },
-        async submitTransferGoal() { await this.authFetch(`/api/goals/${this.transferingGoal.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.transferData) }); this.transferingGoal = null; this.fetchGoals(); },
+        async submitTransferGoal() { await this.authFetch(`/api/goals/${this.transferingGoal.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.transferData) }); this.transferingGoal = null; this.fetchGoals(); this.notify('success', 'Przeniesiono środki'); },
 
-        // --- NOWE METODY: WYPŁATA Z CELU ---
         openWithdrawGoal(goal) {
             this.withdrawingGoal = goal;
             const defaultTarget = this.accounts.find(a => !a.is_savings) || this.accounts[0];
             this.withdrawData = { target_account_id: defaultTarget ? defaultTarget.id : null, amount: '' };
         },
         async submitWithdrawGoal() {
-            if (!this.withdrawData.amount || !this.withdrawData.target_account_id) return alert("Wypełnij wszystkie pola");
-            if (parseFloat(this.withdrawData.amount) > parseFloat(this.withdrawingGoal.current_amount)) return alert("Kwota przekracza środki na celu!");
+            if (!this.withdrawData.amount || !this.withdrawData.target_account_id) return this.notify('error', "Wypełnij wszystkie pola");
+            if (parseFloat(this.withdrawData.amount) > parseFloat(this.withdrawingGoal.current_amount)) return this.notify('error', "Kwota przekracza środki na celu!");
             
             await this.authFetch(`/api/goals/${this.withdrawingGoal.id}/withdraw`, {
                 method: 'POST',
@@ -422,82 +414,9 @@ createApp({
             this.withdrawingGoal = null;
             this.fetchGoals();
             this.fetchAccounts();
+            this.notify('success', 'Wypłacono środki');
         },
-        
 
-                triggerImport(accountId) {
-                    this.importTargetAccountId = accountId;
-                    // Tworzymy ukryty input file dynamicznie
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = '.csv';
-                    input.onchange = e => {
-                        if (e.target.files.length > 0) {
-                            this.processImportFile(e.target.files[0]);
-                        }
-                    };
-                    input.click();
-                },
-        async processImportFile(file) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    
-                    try {
-                        const res = await this.authFetch('/api/import/preview', {
-                            method: 'POST',
-                            body: formData,
-                            headers: {}
-                        });
-                        
-                        // --- POPRAWKA: Odczytujemy błąd z serwera ---
-                        if (!res.ok) {
-                            const errData = await res.json();
-                            throw new Error(errData.detail || "Błąd parsowania pliku");
-                        }
-                        // --------------------------------------------
-                        
-                        const data = await res.json();
-                        if (data.length === 0) return alert("Nie znaleziono transakcji w pliku.");
-                        
-                        this.importData = data.map(tx => ({...tx, ignore: false}));
-                    } catch (e) {
-                        alert("Błąd importu: " + e.message);
-                    }
-                },
-                async submitImport() {
-                    if (!this.importData || !this.importTargetAccountId) return;
-                               
-                               const toImport = this.importData.filter(tx => !tx.ignore);
-                               if (toImport.length === 0) return alert("Brak transakcji do importu.");
-                               
-                               // --- NOWE ZABEZPIECZENIE: Sprawdź czy są kategorie ---
-                               const missingCat = toImport.find(tx => !tx.category_id);
-                               if (missingCat) {
-                                   return alert(`Błąd: Transakcja "${missingCat.description}" nie ma wybranej kategorii. Uzupełnij kategorie lub odznacz transakcję.`);
-                               }
-                    
-                    try {
-                        await this.authFetch('/api/import/confirm', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                account_id: this.importTargetAccountId,
-                                transactions: toImport
-                            })
-                        });
-                        
-                        alert("Zaimportowano pomyślnie!");
-                        this.importData = null;
-                        this.importTargetAccountId = null;
-                        this.fetchData();
-                        this.fetchAccounts();
-                    } catch (e) {
-                        alert("Błąd zapisu: " + e.message);
-                    }
-                },
-        
-
-        // --- NOWE METODY: WYSZUKIWARKA ---
         openSearch() {
             this.showSearch = true;
             const now = new Date();
@@ -537,7 +456,75 @@ createApp({
         clearSearchFilters() {
             this.searchCriteria = { q: '', date_from: '', date_to: '', category_id: null, account_id: null, type: 'all', min_amount: '', max_amount: '' };
             this.searchResults = null;
-        }
+        },
+
+        // IMPORT
+        triggerImport(accountId) {
+            this.importTargetAccountId = accountId;
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.csv';
+            input.onchange = e => {
+                if (e.target.files.length > 0) {
+                    this.processImportFile(e.target.files[0]);
+                }
+            };
+            input.click();
+        },
+        async processImportFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const res = await this.authFetch('/api/import/preview', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {}
+                });
+                
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.detail || "Błąd parsowania pliku");
+                }
+                
+                const data = await res.json();
+                if (data.length === 0) return this.notify('error', "Nie znaleziono transakcji w pliku.");
+                
+                this.importData = data.map(tx => ({...tx, ignore: false}));
+            } catch (e) {
+                this.notify('error', "Błąd importu: " + e.message);
+            }
+        },
+        async submitImport() {
+            if (!this.importData || !this.importTargetAccountId) return;
+            
+            const toImport = this.importData.filter(tx => !tx.ignore);
+            if (toImport.length === 0) return this.notify('error', "Brak transakcji do importu.");
+            
+            const missingCat = toImport.find(tx => !tx.category_id);
+            if (missingCat) {
+                return this.notify('error', `Błąd: Transakcja "${missingCat.description}" nie ma kategorii.`);
+            }
+            
+            try {
+                await this.authFetch('/api/import/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account_id: this.importTargetAccountId,
+                        transactions: toImport
+                    })
+                });
+                
+                this.notify('success', "Zaimportowano pomyślnie!");
+                this.importData = null;
+                this.importTargetAccountId = null;
+                this.fetchData();
+                this.fetchAccounts();
+            } catch (e) {
+                this.notify('error', "Błąd zapisu: " + e.message);
+            }
+        },
     },
     mounted() {
         if (this.token) {

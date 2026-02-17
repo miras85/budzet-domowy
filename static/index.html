@@ -87,6 +87,35 @@
 <body>
     <div id="app" class="h-screen flex flex-col bg-slate-900" v-cloak>
         
+        <!-- SYSTEM POWIADOMIEŃ (TOAST) -->
+                <div class="fixed top-0 left-0 right-0 z-[100] flex flex-col items-center gap-2 p-4 pointer-events-none safe-top">
+                    <transition-group name="toast">
+                        <div v-for="toast in toasts" :key="toast.id"
+                             class="pointer-events-auto glass-panel px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 min-w-[300px] max-w-sm border-l-4 backdrop-blur-md"
+                             :class="{
+                                'border-green-500': toast.type === 'success',
+                                'border-red-500': toast.type === 'error',
+                                'border-blue-500': toast.type === 'info'
+                             }">
+                            <div class="text-lg">
+                                {{ toast.type === 'success' ? '✅' : (toast.type === 'error' ? '🛑' : 'ℹ️') }}
+                            </div>
+                            <div class="flex-1">
+                                <div class="text-xs font-bold uppercase opacity-70"
+                                     :class="{
+                                        'text-green-400': toast.type === 'success',
+                                        'text-red-400': toast.type === 'error',
+                                        'text-blue-400': toast.type === 'info'
+                                     }">
+                                    {{ toast.title }}
+                                </div>
+                                <div class="text-sm text-white font-medium leading-tight">{{ toast.message }}</div>
+                            </div>
+                            <button @click="removeToast(toast.id)" class="text-slate-500 hover:text-white transition-colors">×</button>
+                        </div>
+                    </transition-group>
+                </div>
+        
         <!-- LOGOWANIE -->
         <div v-if="!isLoggedIn" class="h-screen flex flex-col items-center justify-center p-6 z-50 relative">
             <div class="w-full max-w-sm glass-panel p-8 rounded-3xl shadow-2xl border-t border-white/10">
@@ -732,6 +761,6 @@
             <div v-if="isLoggedIn && duePayments.length > 0" class="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"><div class="glass-panel w-full max-w-md rounded-2xl p-6 border border-blue-500/50"><h3 class="text-xl font-bold text-white mb-2">🔔 Płatności cykliczne</h3><p class="text-sm text-slate-400 mb-4">Poniższe opłaty są wymagalne w tym miesiącu. Czy chcesz je dodać?</p><div class="space-y-2 max-h-[50vh] overflow-y-auto mb-4"><div v-for="pay in duePayments" :key="pay.id" class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div><div class="font-bold text-white text-sm">{{ pay.name }}</div><div class="text-xs text-slate-400">{{ pay.category }}</div></div><div class="flex items-center gap-3"><div class="font-bold text-white">{{ formatMoney(pay.amount) }}</div><button @click="skipRecurring(pay)" class="bg-slate-700 text-slate-400 w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-slate-600 hover:text-white transition-colors" title="Pomiń w tym miesiącu">✕</button><button @click="processRecurring(pay)" class="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-green-500 transition-colors" title="Dodaj do planowanych">✓</button></div></div></div><button @click="duePayments = []" class="w-full py-3 text-slate-400 text-sm font-bold">Zamknij (Zrobię to później)</button></div></div>
         </div>
     </div>
-    <script src="/static/app.js?v=35"></script>
+    <script src="/static/app.js?v=36"></script>
 </body>
 </html>
