@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import date
 
 # --- DTO (Data Transfer Objects) ---
@@ -77,7 +77,19 @@ class GoalTransfer(BaseModel):
     amount: float
     target_goal_id: int
     
-
 class GoalWithdraw(BaseModel):
     amount: float
     target_account_id: int
+
+# --- IMPORT CSV ---
+class TransactionImport(BaseModel):
+    date: date
+    description: str
+    amount: float
+    type: str
+    category_id: Optional[int] = None
+    ignore: bool = False
+
+class ImportConfirm(BaseModel):
+    account_id: int
+    transactions: List[TransactionImport] # <--- List z dużej litery

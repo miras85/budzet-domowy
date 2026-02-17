@@ -23,6 +23,8 @@ createApp({
             fundingGoal: null,
             transferingGoal: null,
             selectedCategory: null,
+            importData: null,
+            importTargetAccountId: null,
             
             // NOWE: Wypłata z celu
             withdrawingGoal: null,
@@ -421,6 +423,79 @@ createApp({
             this.fetchGoals();
             this.fetchAccounts();
         },
+        
+
+                triggerImport(accountId) {
+                    this.importTargetAccountId = accountId;
+                    // Tworzymy ukryty input file dynamicznie
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.csv';
+                    input.onchange = e => {
+                        if (e.target.files.length > 0) {
+                            this.processImportFile(e.target.files[0]);
+                        }
+                    };
+                    input.click();
+                },
+        async processImportFile(file) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    try {
+                        const res = await this.authFetch('/api/import/preview', {
+                            method: 'POST',
+                            body: formData,
+                            headers: {}
+                        });
+                        
+                        // --- POPRAWKA: Odczytujemy błąd z serwera ---
+                        if (!res.ok) {
+                            const errData = await res.json();
+                            throw new Error(errData.detail || "Błąd parsowania pliku");
+                        }
+                        // --------------------------------------------
+                        
+                        const data = await res.json();
+                        if (data.length === 0) return alert("Nie znaleziono transakcji w pliku.");
+                        
+                        this.importData = data.map(tx => ({...tx, ignore: false}));
+                    } catch (e) {
+                        alert("Błąd importu: " + e.message);
+                    }
+                },
+                async submitImport() {
+                    if (!this.importData || !this.importTargetAccountId) return;
+                               
+                               const toImport = this.importData.filter(tx => !tx.ignore);
+                               if (toImport.length === 0) return alert("Brak transakcji do importu.");
+                               
+                               // --- NOWE ZABEZPIECZENIE: Sprawdź czy są kategorie ---
+                               const missingCat = toImport.find(tx => !tx.category_id);
+                               if (missingCat) {
+                                   return alert(`Błąd: Transakcja "${missingCat.description}" nie ma wybranej kategorii. Uzupełnij kategorie lub odznacz transakcję.`);
+                               }
+                    
+                    try {
+                        await this.authFetch('/api/import/confirm', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                account_id: this.importTargetAccountId,
+                                transactions: toImport
+                            })
+                        });
+                        
+                        alert("Zaimportowano pomyślnie!");
+                        this.importData = null;
+                        this.importTargetAccountId = null;
+                        this.fetchData();
+                        this.fetchAccounts();
+                    } catch (e) {
+                        alert("Błąd zapisu: " + e.message);
+                    }
+                },
+        
 
         // --- NOWE METODY: WYSZUKIWARKA ---
         openSearch() {

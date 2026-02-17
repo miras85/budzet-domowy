@@ -1,12 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date, timedelta
 from typing import Optional
 import database, models, schemas, utils
-from services import dashboard, transaction, goal as goal_service
+from services import dashboard, transaction, goal as goal_service, bank_import
 
 router = APIRouter(prefix="/api", tags=["Finance"])
+
+# --- IMPORT CSV ---
+@router.post("/import/preview")
+async def preview_import(file: UploadFile = File(...), db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    return await bank_import.parse_bank_csv(db, file)
+
+@router.post("/import/confirm")
+def confirm_import(data: schemas.ImportConfirm, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    return bank_import.save_imported_transactions(db, data.account_id, data.transactions)
 
 # --- DASHBOARD & STATS ---
 @router.get("/dashboard")
@@ -45,15 +54,6 @@ def search_transactions(
 # --- CELE ---
 @router.get("/goals")
 def get_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    # Logika pobierania celów jest specyficzna dla widoku, można ją zostawić tutaj lub przenieść do serwisu,
-    # ale dla uproszczenia refaktoryzacji zostawiamy logikę odczytu (GET) w routerze lub dashboardzie,
-    # a logikę zapisu (POST) w serwisie. Tutaj używamy logiki z dashboardu (monthly_need) w uproszczeniu.
-    # Aby nie duplikować kodu, użyjemy logiki z dashboardu, ale tutaj musimy zwrócić listę.
-    # W tym przypadku, ze względu na złożoność obliczeń 'monthly_need', lepiej zostawić to w routerze lub przenieść do serwisu.
-    # Zostawiam w routerze, bo to tylko odczyt, a logika jest już w dashboardzie (częściowo).
-    # W pełnej refaktoryzacji przeniósłbym to do services/goal.py jako get_goals_with_status(db).
-    
-    # (Dla zwięzłości wklejam skróconą wersję, która korzysta z logiki dashboardu - w praktyce lepiej wydzielić)
     goals = db.query(models.Goal).filter(models.Goal.is_archived == False).all()
     start_date, end_date = utils.get_billing_period(db, 0)
     result = []
@@ -102,7 +102,7 @@ def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Sessio
 @router.delete("/goals/{goal_id}")
 def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Goal).filter(models.Goal.id == goal_id).delete(); db.commit(); return {"status": "deleted"}
 
-# --- POZOSTAŁE (Kredyty, Kategorie, Konta - proste CRUDy zostawiamy w routerze dla czytelności, chyba że chcesz też przenieść) ---
+# --- POZOSTAŁE ---
 @router.get("/loans")
 def get_loans(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     loans = db.query(models.Loan).order_by(models.Loan.next_payment_date).all()

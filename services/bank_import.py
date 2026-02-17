@@ -1,36 +1,27 @@
-import csv
 import io
 import re
 from datetime import datetime
+from typing import Tuple, Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from fastapi import UploadFile, HTTPException
 import models, schemas
 
 def normalize_amount(value: str) -> float:
-    """
-    Konwertuje dziwne formaty kwot bankowych na float.
-    Obsługuje:
-    - "120,00" -> 120.0
-    - "-120 00" -> -120.0 (spacja/tab jako separator)
-    - "1 200,50" -> 1200.5
-    """
     if not value:
         return 0.0
     
-    # Usuń waluty i białe znaki (poza tymi w środku liczby)
+    # 1. Usuń śmieci
     val = value.replace('PLN', '').replace('EUR', '').strip()
     val = val.replace('"', '').replace("'", "")
     
-    # Przypadek 1: Spacja/Tab jako separator dziesiętny (np. "-120 00" lub "-120\t00")
-    # Szukamy wzorca: (opcjonalny minus)(cyfry)(spacja/tab)(dokładnie dwie cyfry na końcu)
-    match_space_sep = re.match(r'^(-?\d+)[\s\t]+(\d{2})$', val)
-    if match_space_sep:
-        return float(f"{match_space_sep.group(1)}.{match_space_sep.group(2)}")
+    # 2. ING Format: "-120 00" (spacja/tab przed groszami)
+    if ',' not in val and '.' not in val:
+        match_space_sep = re.match(r'^(-?\d+)[\s\t]+(\d{2})$', val)
+        if match_space_sep:
+            return float(f"{match_space_sep.group(1)}.{match_space_sep.group(2)}")
 
-    # Przypadek 2: Standardowy (1 200,00 lub 1.200,00)
-    # Usuwamy spacje (tysiączne)
-    val = val.replace(' ', '').replace('\xa0', '') # \xa0 to twarda spacja
+    # 3. Standardowy format
+    val = val.replace(' ', '').replace('\xa0', '').replace('\t', '')
     val = val.replace(',', '.')
     
     try:
@@ -38,24 +29,14 @@ def normalize_amount(value: str) -> float:
     except ValueError:
         return 0.0
 
-def auto_categorize(db: Session, description: str, amount: float) -> tuple[int | None, str]:
-    """
-    Próbuje zgadnąć kategorię i typ na podstawie historii transakcji.
-    Zwraca (category_id, type).
-    """
-    # 1. Domyślny typ na podstawie kwoty
+def auto_categorize(db: Session, description: str, amount: float) -> Tuple[Optional[int], str]:
     tx_type = "expense" if amount < 0 else "income"
     
-    # 2. Szukamy w bazie transakcji o podobnym opisie
-    # Używamy prostego dopasowania LIKE %keyword% dla słów z opisu
-    # Bierzemy pierwsze znaczące słowo (min 4 znaki)
     words = [w for w in re.split(r'\s+', description) if len(w) > 3]
     
     if not words:
         return None, tx_type
 
-    # Szukamy ostatniej transakcji zawierającej jedno ze słów kluczowych
-    # (W prawdziwej produkcji można tu użyć Fuzzy Search, ale SQL LIKE wystarczy na start)
     keyword = words[0]
     similar_tx = db.query(models.Transaction)\
         .filter(models.Transaction.description.ilike(f"%{keyword}%"))\
@@ -71,136 +52,210 @@ def auto_categorize(db: Session, description: str, amount: float) -> tuple[int |
 async def parse_bank_csv(db: Session, file: UploadFile):
     content = await file.read()
     
-    # Próba dekodowania (CP1250 jest standardem w PL bankach, UTF-8 fallback)
-    try:
-        text = content.decode('cp1250')
-    except UnicodeDecodeError:
+    # 1. Wykrywanie kodowania
+    text = ""
+    for enc in ['cp1250', 'utf-8', 'latin-1']:
         try:
-            text = content.decode('utf-8')
+            text = content.decode(enc)
+            break
         except UnicodeDecodeError:
-            text = content.decode('latin-1') # Ostateczność
+            continue
+            
+    if not text:
+        raise HTTPException(status_code=400, detail="Nieznane kodowanie pliku")
 
     lines = text.splitlines()
     
-    # Szukanie nagłówka (pomijanie metadanych ING)
+    # 2. Szukanie nagłówka
     header_row_idx = -1
     for i, line in enumerate(lines):
         if "Data transakcji" in line or "Data operacji" in line:
             header_row_idx = i
             break
     
+    # Fallback
     if header_row_idx == -1:
-        raise HTTPException(status_code=400, detail="Nie znaleziono nagłówka 'Data transakcji' w pliku.")
+        for i, line in enumerate(lines):
+            if "Data" in line and "Kwota" in line:
+                header_row_idx = i
+                break
 
-    # Parsowanie CSV od linii nagłówka
-    # Używamy csv.reader, który radzi sobie z cudzysłowami lepiej niż split(';')
-    csv_io = io.StringIO('\n'.join(lines[header_row_idx:]))
-    reader = csv.reader(csv_io, delimiter=';')
+    if header_row_idx == -1:
+        raise HTTPException(status_code=400, detail="Nie znaleziono nagłówka 'Data transakcji'")
+
+    # 3. Parsowanie nagłówka
+    header_line = lines[header_row_idx]
+    clean_header = header_line.replace('"', '').replace("'", "")
+    headers = clean_header.split(';')
     
-    headers = next(reader) # Pierwszy wiersz to nagłówki
+    # 4. Mapowanie kolumn (Szukamy WSZYSTKICH potencjalnych kolumn z kwotą)
+    col_date = -1
+    col_desc_1 = -1
+    col_desc_2 = -1
     
-    # Mapowanie kolumn (szukamy indeksów)
-    try:
-        # ING specyficzne nazwy
-        col_date = -1
-        col_desc_1 = -1 # Dane kontrahenta
-        col_desc_2 = -1 # Tytuł
-        col_amount = -1
+    # Lista priorytetowa kolumn z kwotami
+    col_amount_main = -1   # "Kwota transakcji"
+    col_amount_block = -1  # "Kwota blokady"
+    col_amount_curr = -1   # "Kwota płatności w walucie"
+    
+    clean_headers = [h.strip().lower() for h in headers]
+    
+    for idx, h in enumerate(clean_headers):
+        if "data transakcji" in h: col_date = idx
+        elif "dane kontrahenta" in h: col_desc_1 = idx
+        elif "tytuł" in h or "tytul" in h: col_desc_2 = idx
         
-        for idx, h in enumerate(headers):
-            h_lower = h.lower().strip()
-            if "data transakcji" in h_lower: col_date = idx
-            elif "dane kontrahenta" in h_lower: col_desc_1 = idx
-            elif "tytuł" in h_lower or "tytul" in h_lower: col_desc_2 = idx
-            elif "kwota transakcji" in h_lower: col_amount = idx
-            
-        if col_date == -1 or col_amount == -1:
-            raise Exception("Brak wymaganych kolumn (Data, Kwota)")
+        # Mapowanie kwot
+        elif "kwota transakcji" in h: col_amount_main = idx
+        elif "kwota blokady" in h: col_amount_block = idx
+        elif "kwota płatności" in h: col_amount_curr = idx
+        elif "kwota" in h and col_amount_main == -1: col_amount_main = idx
+        
+    if col_date == -1:
+        raise HTTPException(status_code=400, detail=f"Nie znaleziono kolumny 'Data'. Nagłówki: {headers}")
+    
+    # Jeśli nie znaleziono głównej, użyjemy którejkolwiek innej jako głównej
+    if col_amount_main == -1:
+        if col_amount_block != -1: col_amount_main = col_amount_block
+        elif col_amount_curr != -1: col_amount_main = col_amount_curr
+        else:
+            raise HTTPException(status_code=400, detail=f"Nie znaleziono kolumny 'Kwota'. Nagłówki: {headers}")
 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Błąd struktury pliku: {str(e)}")
-
+    # 5. Przetwarzanie danych
     preview_data = []
+    errors_log = []
+    rows_processed = 0
     
-    for row in reader:
-        if not row: continue
+    for line in lines[header_row_idx+1:]:
+        if not line.strip(): continue
         
-        # Pobieranie danych
         try:
-            raw_date = row[col_date].strip()
-            raw_amount = row[col_amount].strip()
+            row = line.split(';')
+            row = [r.strip().strip('"').strip("'") for r in row]
             
-            # Opis: Łączymy Kontrahenta i Tytuł
+            # Sprawdzamy czy wiersz jest wystarczająco długi dla daty
+            if len(row) <= col_date: continue
+
+            raw_date = row[col_date].strip()
+            if not raw_date or len(raw_date) < 8: continue
+
+            # --- LOGIKA WYBORU KWOTY ---
+            raw_amount = ""
+            
+            # 1. Sprawdź główną kolumnę (Kwota transakcji)
+            if len(row) > col_amount_main and row[col_amount_main].strip():
+                raw_amount = row[col_amount_main].strip()
+            
+            # 2. Jeśli pusta, sprawdź Kwotę Blokady (dla płatności kartą)
+            if not raw_amount and col_amount_block != -1 and len(row) > col_amount_block:
+                raw_amount = row[col_amount_block].strip()
+                
+            # 3. Jeśli nadal pusta, sprawdź Kwotę w walucie
+            if not raw_amount and col_amount_curr != -1 and len(row) > col_amount_curr:
+                raw_amount = row[col_amount_curr].strip()
+            
+            # Jeśli nadal pusta, to prawdopodobnie wiersz techniczny -> pomiń
+            if not raw_amount:
+                continue
+            # ---------------------------
+
+            # Opis
             desc_parts = []
             if col_desc_1 != -1 and len(row) > col_desc_1: desc_parts.append(row[col_desc_1].strip())
             if col_desc_2 != -1 and len(row) > col_desc_2: desc_parts.append(row[col_desc_2].strip())
             description = " | ".join([p for p in desc_parts if p])
             if not description: description = "Importowana transakcja"
 
-            # Normalizacja
+            # Kwota
             amount = normalize_amount(raw_amount)
             
-            # Data (ING format: YYYY-MM-DD)
-            try:
-                date_obj = datetime.strptime(raw_date, "%Y-%m-%d").date()
-            except ValueError:
-                continue # Pomijamy błędne daty (np. podsumowania na dole pliku)
+            # Data
+            date_obj = None
+            clean_date_str = raw_date[:10]
+            for fmt in ["%Y-%m-%d", "%d.%m.%Y", "%Y.%m.%d"]:
+                try:
+                    date_obj = datetime.strptime(clean_date_str, fmt).date()
+                    break
+                except ValueError:
+                    continue
+            
+            if not date_obj:
+                errors_log.append(f"Niepoprawny format daty '{raw_date}'")
+                continue
 
-            # Auto-kategoryzacja
             cat_id, tx_type = auto_categorize(db, description, amount)
 
             preview_data.append({
                 "date": str(date_obj),
                 "description": description,
-                "amount": abs(amount), # Frontend dostaje wartość bezwzględną
-                "type": tx_type,       # Typ określa znak
+                "amount": abs(amount),
+                "type": tx_type,
                 "category_id": cat_id,
-                "raw_amount": raw_amount # Do debugowania
+                "ignore": False
             })
+            rows_processed += 1
             
         except Exception as e:
-            print(f"Skipping row: {row} -> {e}")
+            errors_log.append(f"Błąd: {str(e)}")
             continue
+
+    if not preview_data:
+        msg = "Nie udało się odczytać transakcji."
+        if errors_log:
+            msg += f" Przykładowe błędy: {'; '.join(errors_log[:3])}"
+        raise HTTPException(status_code=400, detail=msg)
 
     return preview_data
 
-def save_imported_transactions(db: Session, account_id: int, transactions: list[schemas.TransactionImport]):
+def save_imported_transactions(db: Session, account_id: int, transactions: List[schemas.TransactionImport]):
     count = 0
+    print(f"--- PRÓBA ZAPISU {len(transactions)} TRANSAKCJI ---")
+    
     for tx in transactions:
         if tx.ignore: continue
         
-        # Tworzymy transakcję używając istniejącej logiki (żeby zaktualizować salda)
-        # Musimy przekonwertować TransactionImport na TransactionCreate
+        try:
+            # 1. Walidacja kategorii
+            cat_id = tx.category_id
+            # Jeśli frontend przysłał 0, pusty string lub None -> zapisz jako NULL
+            if not cat_id or cat_id == 0 or cat_id == "0":
+                cat_id = None
+            
+            # 2. Walidacja kwoty (musi być float)
+            amount = float(tx.amount)
+            
+            # 3. Walidacja daty (upewnij się, że to obiekt date)
+            tx_date = tx.date
+            if isinstance(tx_date, str):
+                tx_date = datetime.strptime(tx_date, "%Y-%m-%d").date()
+
+            new_tx = models.Transaction(
+                amount=abs(amount), # Zawsze dodatnia w bazie
+                description=tx.description,
+                date=tx_date,
+                type=tx.type,
+                account_id=account_id,
+                category_id=cat_id,
+                status="zrealizowana"
+            )
+            
+            db.add(new_tx)
+            
+            # Aktualizacja salda
+            utils.update_balance(db, account_id, abs(amount), tx.type, None, is_reversal=False)
+            count += 1
+            
+        except Exception as e:
+            print(f"BŁĄD ZAPISU WIERSZA: {tx.description} -> {e}")
+            # Nie przerywamy pętli, próbujemy zapisać kolejne
+            continue
         
-        # Jeśli typ to wydatek, a kwota jest dodatnia, to w bazie zapisujemy kwotę dodatnią,
-        # ale typ 'expense' sprawi, że saldo zmaleje.
+    try:
+        db.commit()
+        print(f"--- SUKCES: ZAPISANO {count} TRANSAKCJI ---")
+    except Exception as e:
+        db.rollback()
+        print(f"--- BŁĄD COMMIT: {e} ---")
+        raise HTTPException(status_code=500, detail=f"Błąd bazy danych: {str(e)}")
         
-        tx_create = schemas.TransactionCreate(
-            amount=tx.amount,
-            description=tx.description,
-            date=tx.date,
-            type=tx.type,
-            account_id=account_id,
-            category_name=None, # Kategorię ustawiamy po ID niżej
-            status="zrealizowana"
-        )
-        
-        # Ręczne tworzenie modelu, bo musimy podać category_id bezpośrednio
-        new_tx = models.Transaction(
-            amount=tx_create.amount,
-            description=tx_create.description,
-            date=tx_create.date,
-            type=tx_create.type,
-            account_id=tx_create.account_id,
-            category_id=tx.category_id,
-            status="zrealizowana"
-        )
-        
-        db.add(new_tx)
-        
-        # Aktualizacja salda
-        utils.update_balance(db, account_id, tx.amount, tx.type, None, is_reversal=False)
-        count += 1
-        
-    db.commit()
     return {"imported": count}
