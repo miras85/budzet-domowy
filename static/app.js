@@ -374,6 +374,7 @@ createApp({
             await this.authFetch(`/api/accounts/${acc.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName, type: acc.type, balance: parseFloat(newBalance), is_savings: isSavings }) });
             this.fetchAccounts();
         },
+        
         async submitLoan() { await this.authFetch('/api/loans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.newLoan) }); this.showAddLoan = false; this.fetchLoans(); },
         editLoan(loan) { this.editingLoan = { ...loan, total_amount: loan.total, remaining_amount: loan.remaining, monthly_payment: loan.monthly, next_payment_date: loan.next_date }; },
         async updateLoan() { await this.authFetch(`/api/loans/${this.editingLoan.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.editingLoan) }); this.editingLoan = null; this.fetchLoans(); },
