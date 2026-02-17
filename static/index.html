@@ -13,7 +13,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/style.css?v=24">
+    <link rel="stylesheet" href="/static/style.css?v=26">
     
     <style>
         [v-cloak] { display: none !important; }
@@ -78,6 +78,10 @@
             color: white;
             box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
         }
+
+        /* UKRYWANIE PASKA PRZEWIJANIA W PRESETACH */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body>
@@ -116,6 +120,9 @@
                     </div>
 
                     <div class="flex gap-2">
+                        <!-- NOWA LUPA -->
+                        <button @click="openSearch" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 text-slate-400 hover:text-white border border-slate-700">🔍</button>
+                        
                         <button @click="currentTab = 'settings'" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 text-slate-400 hover:text-white border border-slate-700">⚙️</button>
                         <button @click="logout" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 text-slate-400 hover:text-red-400 border border-slate-700">🚪</button>
                     </div>
@@ -268,7 +275,7 @@
                                     <!-- Trend Chart -->
                                     <div class="glass-panel p-4 rounded-2xl"><h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Trend Finansowy</h3><div class="relative h-48 w-full"><canvas id="trendChart"></canvas></div></div>
 
-                                    <!-- NOWE: STRUKTURA WYDATKÓW -->
+                                    <!-- STRUKTURA WYDATKÓW -->
                                     <div class="glass-panel p-5 rounded-2xl">
                                         <h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Struktura Wydatków</h3>
                                         
@@ -337,12 +344,7 @@
                             </div>
                             <div v-else class="mb-3 text-xs text-blue-400 font-bold text-right relative z-10">Plan na ten miesiąc wykonany 👍</div>
                             
-                            <div class="flex gap-2 mt-1 relative z-10">
-                                <button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Zasil</button>
-                                <button @click="openWithdrawGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Wypłać</button>
-                                <button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Przenieś</button>
-                                <button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold border border-slate-700">×</button>
-                            </div>
+                            <div class="flex gap-2 mt-1 relative z-10"><button @click="openFundGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Zasil</button><button @click="openWithdrawGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Wypłać</button><button @click="openTransferGoal(goal)" class="flex-1 bg-slate-800 py-2 rounded-lg text-xs font-bold text-white border border-slate-700">Przenieś</button><button @click="deleteGoal(goal.id)" class="px-3 bg-slate-800 rounded-lg text-red-400 font-bold border border-slate-700">×</button></div>
                         </div>
                     </div>
                 </div>
@@ -512,6 +514,105 @@
                 </div>
             </div>
 
+            <!-- EKRAN WYSZUKIWANIA -->
+            <div v-if="showSearch" class="fixed inset-0 z-[100] bg-slate-900 flex flex-col animate-fade-in">
+                <!-- Nagłówek Wyszukiwarki -->
+                <div class="px-5 pt-6 pb-4 flex justify-between items-center bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-10 safe-top">
+                    <h2 class="text-xl font-bold text-white">Szukaj i analizuj</h2>
+                    <button @click="closeSearch" class="text-slate-400 text-sm font-bold bg-slate-800 px-3 py-1.5 rounded-lg">Zamknij</button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-5 pb-32">
+                    <!-- FILTRY -->
+                    <div class="space-y-4 mb-6">
+                        <!-- Tekst -->
+                        <div class="relative">
+                            <input v-model="searchCriteria.q" @keyup.enter="performSearch" type="text" placeholder="Szukaj w opisach..." class="w-full bg-slate-800 text-white p-3 pl-10 rounded-xl border border-slate-700 outline-none focus:border-blue-500">
+                            <div class="absolute left-3 top-3.5 text-slate-500">🔍</div>
+                        </div>
+
+                        <!-- Presety Dat (Chipsy) -->
+                        <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                            <button @click="applyDatePreset(1)" class="whitespace-nowrap px-3 py-1.5 bg-slate-800 rounded-lg text-xs font-bold text-slate-300 border border-slate-700 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-colors">1 Mies.</button>
+                            <button @click="applyDatePreset(3)" class="whitespace-nowrap px-3 py-1.5 bg-slate-800 rounded-lg text-xs font-bold text-slate-300 border border-slate-700 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-colors">3 Mies.</button>
+                            <button @click="applyDatePreset(6)" class="whitespace-nowrap px-3 py-1.5 bg-slate-800 rounded-lg text-xs font-bold text-slate-300 border border-slate-700 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-colors">6 Mies.</button>
+                            <button @click="applyDatePreset(12)" class="whitespace-nowrap px-3 py-1.5 bg-slate-800 rounded-lg text-xs font-bold text-slate-300 border border-slate-700 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-colors">1 Rok</button>
+                            <button @click="searchCriteria.date_from=''; searchCriteria.date_to=''" class="whitespace-nowrap px-3 py-1.5 bg-slate-800 rounded-lg text-xs font-bold text-slate-300 border border-slate-700 hover:bg-red-600 hover:text-white hover:border-red-500 transition-colors">Całość</button>
+                        </div>
+
+                        <!-- Zakres Dat -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-slate-800 p-2 rounded-xl border border-slate-700">
+                                <label class="text-[10px] text-slate-500 uppercase font-bold block pl-1">Od</label>
+                                <input v-model="searchCriteria.date_from" type="date" class="bg-transparent text-white text-sm w-full outline-none">
+                            </div>
+                            <div class="bg-slate-800 p-2 rounded-xl border border-slate-700">
+                                <label class="text-[10px] text-slate-500 uppercase font-bold block pl-1">Do</label>
+                                <input v-model="searchCriteria.date_to" type="date" class="bg-transparent text-white text-sm w-full outline-none">
+                            </div>
+                        </div>
+
+                        <!-- Szczegóły (Rozwijane lub siatka) -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <select v-model="searchCriteria.type" class="bg-slate-800 text-white text-sm p-3 rounded-xl border border-slate-700 outline-none">
+                                <option value="all">Wszystkie typy</option>
+                                <option value="expense">Wydatki</option>
+                                <option value="income">Przychody</option>
+                                <option value="transfer">Transfery</option>
+                            </select>
+                            <select v-model="searchCriteria.category_id" class="bg-slate-800 text-white text-sm p-3 rounded-xl border border-slate-700 outline-none">
+                                <option :value="null">Wszystkie kategorie</option>
+                                <option v-for="cat in categories" :value="cat.id">{{ cat.name }}</option>
+                            </select>
+                        </div>
+
+                        <button @click="performSearch" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-900/20 transition-all active:scale-95">Szukaj</button>
+                        <button @click="clearSearchFilters" class="w-full text-slate-500 text-xs font-bold py-2">Wyczyść filtry</button>
+                    </div>
+
+                    <!-- WYNIKI -->
+                    <div v-if="searchResults !== null" class="animate-fade-in">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider">Wyniki: {{ searchSummary.count }}</h3>
+                        </div>
+
+                        <!-- ANALITYKA WYNIKÓW -->
+                        <div class="grid grid-cols-3 gap-2 mb-6">
+                            <div class="bg-green-500/10 border border-green-500/20 p-2 rounded-xl text-center">
+                                <div class="text-[10px] text-green-400 font-bold uppercase">Przychody</div>
+                                <div class="text-sm font-bold text-white">{{ formatMoney(searchSummary.income) }}</div>
+                            </div>
+                            <div class="bg-red-500/10 border border-red-500/20 p-2 rounded-xl text-center">
+                                <div class="text-[10px] text-red-400 font-bold uppercase">Wydatki</div>
+                                <div class="text-sm font-bold text-white">{{ formatMoney(searchSummary.expense) }}</div>
+                            </div>
+                            <div class="bg-blue-500/10 border border-blue-500/20 p-2 rounded-xl text-center">
+                                <div class="text-[10px] text-blue-400 font-bold uppercase">Bilans</div>
+                                <div class="text-sm font-bold text-white">{{ formatMoney(searchSummary.balance) }}</div>
+                            </div>
+                        </div>
+
+                        <!-- LISTA -->
+                        <div class="space-y-3">
+                            <div v-if="searchResults.length === 0" class="text-center text-slate-500 py-10">Brak wyników dla tych kryteriów</div>
+                            
+                            <div v-for="tx in searchResults" :key="tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3">
+                                <div :class="getIconClass(tx.type)" class="w-10 h-10 rounded-full flex items-center justify-center text-lg relative shrink-0">
+                                    {{ getIcon(tx.type) }}
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold text-slate-200 text-sm truncate pr-1">{{ tx.desc }}</div>
+                                    <div class="text-xs text-slate-500 truncate">{{ tx.category }} • {{ formatDateShort(tx.date) }}</div>
+                                </div>
+                                <div class="flex flex-col items-end gap-1 shrink-0">
+                                    <div :class="getColorClass(tx.type)" class="font-bold text-sm whitespace-nowrap">{{ tx.type === 'income' ? '+' : (tx.type === 'transfer' ? '' : '-') }}{{ formatMoney(tx.amount) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- MODALE -->
             <div v-if="selectedCategory" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="selectedCategory = null">
                 <div class="glass-panel w-full max-w-md rounded-2xl p-5 max-h-[80vh] overflow-y-auto flex flex-col">
@@ -524,6 +625,7 @@
             <div v-if="editingLoan" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="editingLoan = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Edytuj Kredyt</h3><div class="space-y-3"><input v-model="editingLoan.name" placeholder="Nazwa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.next_payment_date" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="updateLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz zmiany</button></div></div></div>
             <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Z konta</label><select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.available) }}) {{ acc.is_savings ? '🔒' : '💳' }}</option></select><div v-if="isSourceROR" class="bg-blue-900/20 p-3 rounded-xl border border-blue-500/30"><label class="text-xs text-blue-300 uppercase font-bold mb-1 block">Automatyczny transfer na:</label><select v-model="fundData.target_savings_id" class="input-dark w-full max-w-full p-2 rounded-lg text-sm outline-none bg-slate-900 appearance-none"><option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }}</option></select><div class="text-[10px] text-blue-400 mt-1">System automatycznie przeleje środki na to konto oszczędnościowe.</div></div><input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil Cel</button></div></div></div>
             <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
+            
             <!-- MODAL WYPŁATY Z CELU -->
             <div v-if="withdrawingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="withdrawingGoal = null">
                 <div class="glass-panel w-full max-w-md rounded-2xl p-5">
@@ -549,10 +651,10 @@
                     </div>
                 </div>
             </div>
-            
+
             <div v-if="isLoggedIn && duePayments.length > 0" class="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"><div class="glass-panel w-full max-w-md rounded-2xl p-6 border border-blue-500/50"><h3 class="text-xl font-bold text-white mb-2">🔔 Płatności cykliczne</h3><p class="text-sm text-slate-400 mb-4">Poniższe opłaty są wymagalne w tym miesiącu. Czy chcesz je dodać?</p><div class="space-y-2 max-h-[50vh] overflow-y-auto mb-4"><div v-for="pay in duePayments" :key="pay.id" class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div><div class="font-bold text-white text-sm">{{ pay.name }}</div><div class="text-xs text-slate-400">{{ pay.category }}</div></div><div class="flex items-center gap-3"><div class="font-bold text-white">{{ formatMoney(pay.amount) }}</div><button @click="skipRecurring(pay)" class="bg-slate-700 text-slate-400 w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-slate-600 hover:text-white transition-colors" title="Pomiń w tym miesiącu">✕</button><button @click="processRecurring(pay)" class="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-green-500 transition-colors" title="Dodaj do planowanych">✓</button></div></div></div><button @click="duePayments = []" class="w-full py-3 text-slate-400 text-sm font-bold">Zamknij (Zrobię to później)</button></div></div>
         </div>
     </div>
-    <script src="/static/app.js?v=25"></script>
+    <script src="/static/app.js?v=26"></script>
 </body>
 </html>

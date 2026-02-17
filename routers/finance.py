@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from datetime import date, timedelta
+from typing import Optional
 import database, models, schemas, utils
 
 router = APIRouter(prefix="/api", tags=["Finance"])
@@ -211,6 +212,69 @@ def delete_transaction(tx_id: int, db: Session = Depends(database.get_db), curre
         if tx.loan_id and tx.type == 'expense': utils.update_loan_balance(db, tx.loan_id, tx.amount, is_reversal=True)
     db.delete(tx); db.commit(); return {"status": "deleted"}
 
+# --- WYSZUKIWARKA (NOWE) ---
+@router.get("/transactions/search")
+def search_transactions(
+    q: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    category_id: Optional[int] = None,
+    account_id: Optional[int] = None,
+    type: Optional[str] = None,
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(database.get_current_user)
+):
+    query = db.query(models.Transaction).options(joinedload(models.Transaction.category)).filter(models.Transaction.status == 'zrealizowana')
+
+    # Filtrowanie
+    if q:
+        query = query.filter(models.Transaction.description.ilike(f"%{q}%"))
+    if date_from:
+        query = query.filter(models.Transaction.date >= date_from)
+    if date_to:
+        query = query.filter(models.Transaction.date <= date_to)
+    if category_id:
+        query = query.filter(models.Transaction.category_id == category_id)
+    if account_id:
+        query = query.filter((models.Transaction.account_id == account_id) | (models.Transaction.target_account_id == account_id))
+    if type:
+        query = query.filter(models.Transaction.type == type)
+    if min_amount is not None:
+        query = query.filter(models.Transaction.amount >= min_amount)
+    if max_amount is not None:
+        query = query.filter(models.Transaction.amount <= max_amount)
+
+    # Sortowanie: Najnowsze na górze
+    results = query.order_by(models.Transaction.date.desc(), models.Transaction.id.desc()).all()
+
+    # Analityka wyników
+    total_income = sum(float(t.amount) for t in results if t.type == 'income')
+    total_expense = sum(float(t.amount) for t in results if t.type == 'expense')
+    
+    # Formatowanie do JSON
+    tx_list = []
+    for t in results:
+        cat_name = t.category.name if t.category else "-"
+        if t.type == 'transfer': cat_name = "Transfer"
+        
+        tx_list.append({
+            "id": t.id, "desc": t.description, "amount": float(t.amount),
+            "type": t.type, "category": cat_name, "date": str(t.date),
+            "account_id": t.account_id, "target_account_id": t.target_account_id
+        })
+
+    return {
+        "transactions": tx_list,
+        "summary": {
+            "income": total_income,
+            "expense": total_expense,
+            "balance": total_income - total_expense,
+            "count": len(tx_list)
+        }
+    }
+
 # --- CELE ---
 @router.get("/goals")
 def get_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
@@ -230,7 +294,7 @@ def get_goals(db: Session = Depends(database.get_db), current_user: models.User 
                 cycles_left += 1; check_offset += 1
                 if cycles_left > 120: break
             
-            # NOWA LOGIKA: Sumujemy GoalContribution w tym cyklu
+            # Sumujemy GoalContribution w tym cyklu
             contribs = db.query(func.sum(models.GoalContribution.amount)).filter(
                 models.GoalContribution.goal_id == g.id,
                 models.GoalContribution.date >= start_date,
@@ -317,7 +381,7 @@ def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Sessio
     
     db.commit(); return {"status": "transferred"}
 
-
+# NOWE: WYPŁATA Z CELU
 @router.post("/goals/{goal_id}/withdraw")
 def withdraw_goal_funds(goal_id: int, withdraw: schemas.GoalWithdraw, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
@@ -336,11 +400,9 @@ def withdraw_goal_funds(goal_id: int, withdraw: schemas.GoalWithdraw, db: Sessio
     db.add(models.GoalContribution(goal_id=goal.id, amount=-withdraw.amount, date=date.today()))
     
     # 3. Logika transferu pieniędzy
-    # Jeśli wypłacamy na INNE konto (np. z Oszczędnościowego na ROR), musimy zrobić transfer
     if goal.account_id != target_acc.id:
         source_acc = db.query(models.Account).filter(models.Account.id == goal.account_id).first()
         
-        # Tworzymy transakcję transferu
         tx = models.Transaction(
             amount=withdraw.amount,
             description=f"Wypłata z celu: {goal.name}",
@@ -351,17 +413,10 @@ def withdraw_goal_funds(goal_id: int, withdraw: schemas.GoalWithdraw, db: Sessio
             status="zrealizowana"
         )
         db.add(tx)
-        
-        # Aktualizujemy salda fizyczne kont
         utils.update_balance(db, source_acc.id, withdraw.amount, "transfer", target_acc.id, is_reversal=False)
     
-    # Jeśli wypłacamy na TO SAMO konto (po prostu uwalniamy środki z celu),
-    # fizyczne saldo konta się nie zmienia, zmienia się tylko "dostępne" (bo cel maleje).
-    # Nie robimy nic więcej.
-
     db.commit()
     return {"status": "withdrawn"}
-
 
 @router.delete("/goals/{goal_id}")
 def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Goal).filter(models.Goal.id == goal_id).delete(); db.commit(); return {"status": "deleted"}
@@ -418,7 +473,6 @@ def update_account(account_id: int, acc: schemas.AccountUpdate, db: Session = De
     if not db_acc: raise HTTPException(status_code=404)
     db_acc.name = acc.name; db_acc.type = acc.type; db_acc.balance = acc.balance; db_acc.is_savings = acc.is_savings; db.commit(); return {"status": "updated"}
 
-# NOWE: Zwracanie dostępnego salda (po odjęciu celów)
 @router.get("/accounts")
 def get_accounts(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     accounts = db.query(models.Account).all()
@@ -435,7 +489,7 @@ def get_accounts(db: Session = Depends(database.get_db), current_user: models.Us
             "type": acc.type,
             "balance": float(acc.balance),
             "is_savings": acc.is_savings,
-            "available": float(acc.balance) - reserved # NOWE POLE
+            "available": float(acc.balance) - reserved
         })
     return result
 

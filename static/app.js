@@ -24,6 +24,25 @@ createApp({
             transferingGoal: null,
             selectedCategory: null,
             
+            // NOWE: Wypłata z celu
+            withdrawingGoal: null,
+            withdrawData: { target_account_id: null, amount: '' },
+
+            // NOWE: Wyszukiwarka
+            showSearch: false,
+            searchCriteria: {
+                q: '',
+                date_from: '',
+                date_to: '',
+                category_id: null,
+                account_id: null,
+                type: 'all',
+                min_amount: '',
+                max_amount: ''
+            },
+            searchResults: null,
+            searchSummary: { income: 0, expense: 0, balance: 0, count: 0 },
+            
             filterStatus: 'all',
             filterAccount: null,
             isPlanned: false,
@@ -67,8 +86,6 @@ createApp({
             newRecurring: { name: '', amount: '', day_of_month: '', category_name: '', account_id: null },
             newOverride: { year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: 25 },
             fundData: { source_account_id: null, target_savings_id: null, amount: '' },
-            withdrawingGoal: null,
-            withdrawData: { target_account_id: null, amount: '' },
             transferData: { target_goal_id: null, amount: '' }
         }
     },
@@ -141,9 +158,6 @@ createApp({
             this.loginForm.password = '';
             this.duePayments = [];
         },
-        
-        
-        
         async authFetch(url, options = {}) {
             if (!options.headers) options.headers = {};
             options.headers['Authorization'] = `Bearer ${this.token}`;
@@ -158,8 +172,6 @@ createApp({
         async submitRecurring() { await this.authFetch('/api/recurring', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.newRecurring) }); this.showAddRecurring = false; this.fetchRecurring(); },
         async deleteRecurring(id) { if(!confirm("Usunąć subskrypcję?")) return; await this.authFetch(`/api/recurring/${id}`, { method: 'DELETE' }); this.fetchRecurring(); },
         async processRecurring(pay) { await this.authFetch(`/api/recurring/${pay.id}/process`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ date: new Date().toISOString().split('T')[0] }) }); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.fetchData(); this.fetchAccounts(); },
-        
-        // NOWE: Metoda do pomijania płatności
         async skipRecurring(pay) {
             if(!confirm("Pominąć tę płatność w tym miesiącu?")) return;
             await this.authFetch(`/api/recurring/${pay.id}/skip`, { method: 'POST' });
@@ -270,7 +282,6 @@ createApp({
             this.showCategorySelector = false;
             this.newTx = { description: '', amount: '', type: 'expense', account_id: this.accounts[0]?.id, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] };
         },
-        
         async submitTransaction() {
             if(!this.newTx.account_id) return alert("Wybierz konto!");
             if(this.newTx.type === 'transfer' && !this.newTx.target_account_id) return alert("Wybierz konto docelowe!");
@@ -317,29 +328,71 @@ createApp({
             const defaultTarget = this.savingsAccounts[0]?.id;
             this.fundData = { source_account_id: defaultSource, target_savings_id: defaultTarget, amount: '' };
         },
-        
-        openWithdrawGoal(goal) {
-                    this.withdrawingGoal = goal;
-                    // Domyślnie wybierz pierwsze konto ROR (nie oszczędnościowe) jako cel wypłaty
-                    const defaultTarget = this.accounts.find(a => !a.is_savings) || this.accounts[0];
-                    this.withdrawData = { target_account_id: defaultTarget ? defaultTarget.id : null, amount: '' };
-                },
-                async submitWithdrawGoal() {
-                    if (!this.withdrawData.amount || !this.withdrawData.target_account_id) return alert("Wypełnij wszystkie pola");
-                    await this.authFetch(`/api/goals/${this.withdrawingGoal.id}/withdraw`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(this.withdrawData)
-                    });
-                    this.withdrawingGoal = null;
-                    this.fetchGoals();
-                    this.fetchAccounts(); // Ważne, bo salda mogły się zmienić
-                },
-        
-        
         async submitFundGoal() { await this.authFetch(`/api/goals/${this.fundingGoal.id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.fundData) }); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); },
         openTransferGoal(goal) { this.transferingGoal = goal; this.transferData = { target_goal_id: null, amount: '' }; },
-        async submitTransferGoal() { await this.authFetch(`/api/goals/${this.transferingGoal.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.transferData) }); this.transferingGoal = null; this.fetchGoals(); }
+        async submitTransferGoal() { await this.authFetch(`/api/goals/${this.transferingGoal.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.transferData) }); this.transferingGoal = null; this.fetchGoals(); },
+
+        // --- NOWE METODY: WYPŁATA Z CELU ---
+        openWithdrawGoal(goal) {
+            this.withdrawingGoal = goal;
+            const defaultTarget = this.accounts.find(a => !a.is_savings) || this.accounts[0];
+            this.withdrawData = { target_account_id: defaultTarget ? defaultTarget.id : null, amount: '' };
+        },
+        async submitWithdrawGoal() {
+            if (!this.withdrawData.amount || !this.withdrawData.target_account_id) return alert("Wypełnij wszystkie pola");
+            if (parseFloat(this.withdrawData.amount) > parseFloat(this.withdrawingGoal.current_amount)) return alert("Kwota przekracza środki na celu!");
+            
+            await this.authFetch(`/api/goals/${this.withdrawingGoal.id}/withdraw`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.withdrawData)
+            });
+            this.withdrawingGoal = null;
+            this.fetchGoals();
+            this.fetchAccounts();
+        },
+
+        // --- NOWE METODY: WYSZUKIWARKA ---
+        openSearch() {
+            this.showSearch = true;
+            const now = new Date();
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            this.searchCriteria.date_from = firstDay.toISOString().split('T')[0];
+            this.searchCriteria.date_to = now.toISOString().split('T')[0];
+            this.searchResults = null;
+        },
+        closeSearch() {
+            this.showSearch = false;
+            this.searchResults = null;
+        },
+        applyDatePreset(months) {
+            const end = new Date();
+            const start = new Date();
+            start.setMonth(start.getMonth() - months);
+            this.searchCriteria.date_to = end.toISOString().split('T')[0];
+            this.searchCriteria.date_from = start.toISOString().split('T')[0];
+            this.performSearch();
+        },
+        async performSearch() {
+            const params = new URLSearchParams();
+            if(this.searchCriteria.q) params.append('q', this.searchCriteria.q);
+            if(this.searchCriteria.date_from) params.append('date_from', this.searchCriteria.date_from);
+            if(this.searchCriteria.date_to) params.append('date_to', this.searchCriteria.date_to);
+            if(this.searchCriteria.category_id) params.append('category_id', this.searchCriteria.category_id);
+            if(this.searchCriteria.account_id) params.append('account_id', this.searchCriteria.account_id);
+            if(this.searchCriteria.type && this.searchCriteria.type !== 'all') params.append('type', this.searchCriteria.type);
+            if(this.searchCriteria.min_amount) params.append('min_amount', this.searchCriteria.min_amount);
+            if(this.searchCriteria.max_amount) params.append('max_amount', this.searchCriteria.max_amount);
+
+            const res = await this.authFetch(`/api/transactions/search?${params.toString()}`);
+            const data = await res.json();
+            this.searchResults = data.transactions;
+            this.searchSummary = data.summary;
+        },
+        clearSearchFilters() {
+            this.searchCriteria = { q: '', date_from: '', date_to: '', category_id: null, account_id: null, type: 'all', min_amount: '', max_amount: '' };
+            this.searchResults = null;
+        }
     },
     mounted() {
         if (this.token) {
