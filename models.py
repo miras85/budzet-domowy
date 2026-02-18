@@ -16,6 +16,10 @@ class Category(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True)
     monthly_limit = Column(DECIMAL(10, 2), default=0.0)
+    # --- NOWE POLA ---
+    icon_name = Column(String(50), default="tag")
+    color = Column(String(20), default="#94a3b8")
+    # -----------------
 
 class Loan(Base):
     __tablename__ = "loans"
@@ -36,7 +40,6 @@ class Goal(Base):
     is_archived = Column(Boolean, default=False)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
-# NOWA TABELA: Historia wpłat na cele
 class GoalContribution(Base):
     __tablename__ = "goal_contributions"
     id = Column(Integer, primary_key=True, index=True)

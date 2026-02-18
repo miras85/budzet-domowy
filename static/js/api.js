@@ -98,7 +98,14 @@ export const recurring = {
 
 export const categories = {
     async getAll() { return (await authFetch('/api/categories')).json(); },
-    async create(name) { return authFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }); },
+    // ZMIANA TUTAJ: przyjmujemy obiekt 'data' zamiast 'name'
+        async create(data) {
+            return authFetch('/api/categories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data) // data to { name, icon, color }
+            });
+        },
     async update(id, data) { return authFetch(`/api/categories/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
     async delete(id) { return authFetch(`/api/categories/${id}`, { method: 'DELETE' }); }
 };

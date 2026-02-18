@@ -1,3 +1,4 @@
+### routers/finance.py
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -20,7 +21,15 @@ def confirm_import(data: schemas.ImportConfirm, db: Session = Depends(database.g
 # --- DASHBOARD & STATS ---
 @router.get("/dashboard")
 def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    return dashboard.get_dashboard_data(db, offset)
+    data = dashboard.get_dashboard_data(db, offset)
+    # Uzupełniamy transakcje o ikony i kolory
+    for tx in data["recent_transactions"]:
+        if tx["category_name"] and tx["category_name"] != "-" and tx["category_name"] != "Transfer":
+            cat = db.query(models.Category).filter(models.Category.name == tx["category_name"]).first()
+            if cat:
+                tx["category_icon"] = cat.icon_name
+                tx["category_color"] = cat.color
+    return data
 
 @router.get("/stats/trend")
 def get_trend(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
@@ -49,7 +58,14 @@ def search_transactions(
     min_amount: Optional[float] = None, max_amount: Optional[float] = None,
     db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)
 ):
-    return transaction.search_transactions(db, q, date_from, date_to, category_id, account_id, type, min_amount, max_amount)
+    result = transaction.search_transactions(db, q, date_from, date_to, category_id, account_id, type, min_amount, max_amount)
+    for tx in result["transactions"]:
+        if tx["category"] and tx["category"] != "-" and tx["category"] != "Transfer":
+            cat = db.query(models.Category).filter(models.Category.name == tx["category"]).first()
+            if cat:
+                tx["category_icon"] = cat.icon_name
+                tx["category_color"] = cat.color
+    return result
 
 # --- CELE ---
 @router.get("/goals")
@@ -102,7 +118,6 @@ def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Sessio
 @router.delete("/goals/{goal_id}")
 def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Goal).filter(models.Goal.id == goal_id).delete(); db.commit(); return {"status": "deleted"}
 
-# --- POZOSTAŁE ---
 @router.get("/loans")
 def get_loans(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     loans = db.query(models.Loan).order_by(models.Loan.next_payment_date).all()
@@ -118,18 +133,33 @@ def update_loan(loan_id: int, loan: schemas.LoanUpdate, db: Session = Depends(da
     db_loan = db.query(models.Loan).filter(models.Loan.id == loan_id).first()
     if not db_loan: raise HTTPException(status_code=404)
     db_loan.name = loan.name; db_loan.total_amount = loan.total_amount; db_loan.remaining_amount = loan.remaining_amount; db_loan.monthly_payment = loan.monthly_payment; db_loan.next_payment_date = loan.next_payment_date; db.commit(); return {"status": "updated"}
+
+# --- KATEGORIE (POPRAWIONE) ---
 @router.get("/categories")
-def get_categories(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): return db.query(models.Category).order_by(models.Category.name).all()
+def get_categories(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    return db.query(models.Category).order_by(models.Category.name).all()
+
 @router.post("/categories")
 def create_category(cat: schemas.CategoryCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     if db.query(models.Category).filter(models.Category.name == cat.name).first(): raise HTTPException(status_code=400, detail="Kategoria istnieje")
-    db.add(models.Category(name=cat.name, monthly_limit=cat.monthly_limit)); db.commit(); return {"status": "ok"}
+    # Mapujemy 'icon' z JSONa na 'icon_name' w bazie
+    db.add(models.Category(name=cat.name, monthly_limit=cat.monthly_limit, icon_name=cat.icon, color=cat.color));
+    db.commit();
+    return {"status": "ok"}
+
 @router.put("/categories/{cat_id}")
 def update_category(cat_id: int, cat: schemas.CategoryCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     db_cat = db.query(models.Category).filter(models.Category.id == cat_id).first()
-    db_cat.name = cat.name; db_cat.monthly_limit = cat.monthly_limit; db.commit(); return {"status": "updated"}
+    db_cat.name = cat.name; db_cat.monthly_limit = cat.monthly_limit;
+    # Mapujemy 'icon' z JSONa na 'icon_name' w bazie
+    if cat.icon: db_cat.icon_name = cat.icon
+    if cat.color: db_cat.color = cat.color
+    db.commit(); return {"status": "updated"}
+
 @router.delete("/categories/{cat_id}")
 def delete_category(cat_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Category).filter(models.Category.id == cat_id).delete(); db.commit(); return {"status": "deleted"}
+
+# --- POZOSTAŁE ---
 @router.get("/settings/payday-overrides")
 def get_payday_overrides(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): return db.query(models.PaydayOverride).order_by(models.PaydayOverride.year.desc(), models.PaydayOverride.month.desc()).all()
 @router.post("/settings/payday-overrides")

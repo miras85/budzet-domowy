@@ -51,6 +51,8 @@ class PaydayOverrideCreate(BaseModel):
 class CategoryCreate(BaseModel):
     name: str
     monthly_limit: float = 0.0
+    icon: str = "tag"       # Domyślna ikona
+    color: str = "#94a3b8"  # Domyślny kolor
     
 class RecurringCreate(BaseModel):
     name: str

@@ -1,39 +1,202 @@
 import * as Utils from '../utils.js';
+import { ICON_PATHS } from '../icons.js?v=20';
+
 export default {
     props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment'],
     emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts'],
-    setup() { return { ...Utils }; },
-    watch: { viewMode(newVal) { if (newVal === 'chart') setTimeout(() => this.$emit('render-charts'), 50); } },
+    setup() {
+        return {
+            ...Utils,
+            iconPaths: ICON_PATHS
+        };
+    },
+    watch: {
+        viewMode(newVal) {
+            if (newVal === 'chart') setTimeout(() => this.$emit('render-charts'), 50);
+        }
+    },
     template: `
     <div class="px-6">
         <div class="gradient-card rounded-3xl p-6 shadow-2xl shadow-blue-900/20 relative overflow-hidden mb-4">
             <div class="relative z-10">
-                <div class="text-center mb-6"><div class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Dostępne środki (ROR)</div><div class="text-4xl font-bold text-white tracking-tight leading-none">{{ formatMoney(dashboard.disposable_balance) }}</div><div class="inline-flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full mt-3 border border-white/10"><span class="text-[10px] text-blue-100 font-medium">Razem ze środkami na cele:</span><span class="text-xs font-bold text-white">{{ formatMoney(dashboard.total_balance) }}</span></div></div>
+                <div class="text-center mb-6">
+                    <div class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Dostępne środki (ROR)</div>
+                    <div class="text-4xl font-bold text-white tracking-tight leading-none">{{ formatMoney(dashboard.disposable_balance) }}</div>
+                    <div class="inline-flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full mt-3 border border-white/10">
+                        <span class="text-[10px] text-blue-100 font-medium">Razem ze środkami na cele:</span>
+                        <span class="text-xs font-bold text-white">{{ formatMoney(dashboard.total_balance) }}</span>
+                    </div>
+                </div>
                 <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5"><div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold mb-1">Przychody</div><div class="font-bold text-white text-lg leading-tight">{{ formatMoney(dashboard.monthly_income_realized) }}</div><div class="text-[10px] text-green-300 mt-1 font-bold opacity-80">Prog: {{ formatMoney(dashboard.monthly_income_forecast) }}</div></div>
-                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5"><div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold mb-1">Wydatki</div><div class="font-bold text-white text-lg leading-tight">{{ formatMoney(dashboard.monthly_expenses_realized) }}</div><div class="text-[10px] text-red-300 mt-1 font-bold opacity-80">Prog: {{ formatMoney(dashboard.monthly_expenses_forecast) }}</div></div>
-                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5"><div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold mb-1">Bilans</div><div :class="(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized) >= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold text-lg leading-tight">{{ (dashboard.monthly_income_realized - dashboard.monthly_expenses_realized) > 0 ? '+' : '' }}{{ formatMoney(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized) }}</div></div>
-                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5"><div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold mb-1">Prognoza ROR</div><div class="font-bold text-blue-200 text-lg leading-tight">{{ formatMoney(dashboard.forecast_ror) }}</div></div>
+                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5">
+                        <div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold mb-1">Przychody</div>
+                        <div class="font-bold text-white text-lg leading-tight">{{ formatMoney(dashboard.monthly_income_realized) }}</div>
+                        <div class="text-[10px] text-green-300 mt-1 font-bold opacity-80">Prog: {{ formatMoney(dashboard.monthly_income_forecast) }}</div>
+                    </div>
+                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5">
+                        <div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold mb-1">Wydatki</div>
+                        <div class="font-bold text-white text-lg leading-tight">{{ formatMoney(dashboard.monthly_expenses_realized) }}</div>
+                        <div class="text-[10px] text-red-300 mt-1 font-bold opacity-80">Prog: {{ formatMoney(dashboard.monthly_expenses_forecast) }}</div>
+                    </div>
+                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5">
+                        <div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold mb-1">Bilans</div>
+                        <div :class="(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized) >= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold text-lg leading-tight">
+                            {{ (dashboard.monthly_income_realized - dashboard.monthly_expenses_realized) > 0 ? '+' : '' }}{{ formatMoney(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized) }}
+                        </div>
+                    </div>
+                    <div class="bg-black/20 rounded-xl p-3 backdrop-blur-sm border border-white/5">
+                        <div class="text-[10px] text-blue-100 opacity-70 uppercase font-bold mb-1">Prognoza ROR</div>
+                        <div class="font-bold text-blue-200 text-lg leading-tight">{{ formatMoney(dashboard.forecast_ror) }}</div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-green-500"><div><div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele oszczędnościowe</div><div class="text-sm text-slate-200">Wymagane w tym okresie:</div><div class="text-xl font-bold text-green-400">{{ formatMoney(dashboard.goals_monthly_need) }}</div></div><div class="text-right"><div class="text-xs text-slate-500">Odłożono łącznie</div><div class="text-lg font-bold text-white">{{ formatMoney(dashboard.goals_total_saved) }}</div></div></div>
-        <div class="flex flex-col gap-3 mb-4">
-            <div class="bg-slate-800 p-1 rounded-xl grid grid-cols-3 gap-1"><button @click="$emit('update:viewMode', 'list')" :class="viewMode === 'list' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Lista</button><button @click="$emit('update:viewMode', 'categories')" :class="viewMode === 'categories' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Kategorie</button><button @click="$emit('update:viewMode', 'chart')" :class="viewMode === 'chart' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Analiza</button></div>
-            <div v-if="viewMode !== 'chart'" class="flex justify-between items-center gap-2"><div class="relative flex-1"><select :value="filterAccount" @input="$emit('update:filterAccount', $event.target.value === 'null' ? null : parseInt($event.target.value))" class="w-full bg-slate-800 text-white text-xs font-bold py-2.5 pl-3 pr-8 rounded-xl border border-slate-700 outline-none appearance-none focus:border-blue-500 transition-colors"><option :value="null">Wszystkie konta</option><option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option></select><div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">▼</div></div><div class="flex bg-slate-800 rounded-xl p-1 border border-slate-700"><button @click="$emit('update:filterStatus', 'all')" :class="filterStatus === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Wsz.</button><button @click="$emit('update:filterStatus', 'zrealizowana')" :class="filterStatus === 'zrealizowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Zreal.</button><button @click="$emit('update:filterStatus', 'planowana')" :class="filterStatus === 'planowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Plan.</button></div></div>
+
+        <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-green-500">
+            <div>
+                <div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele oszczędnościowe</div>
+                <div class="text-sm text-slate-200">Wymagane w tym okresie:</div>
+                <div class="text-xl font-bold text-green-400">{{ formatMoney(dashboard.goals_monthly_need) }}</div>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-slate-500">Odłożono łącznie</div>
+                <div class="text-lg font-bold text-white">{{ formatMoney(dashboard.goals_total_saved) }}</div>
+            </div>
         </div>
+
+        <div class="flex flex-col gap-3 mb-4">
+            <div class="bg-slate-800 p-1 rounded-xl grid grid-cols-3 gap-1">
+                <button @click="$emit('update:viewMode', 'list')" :class="viewMode === 'list' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Lista</button>
+                <button @click="$emit('update:viewMode', 'categories')" :class="viewMode === 'categories' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Kategorie</button>
+                <button @click="$emit('update:viewMode', 'chart')" :class="viewMode === 'chart' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'" class="py-2 rounded-lg text-xs font-bold transition-all">Analiza</button>
+            </div>
+            <div v-if="viewMode !== 'chart'" class="flex justify-between items-center gap-2">
+                <div class="relative flex-1">
+                    <select :value="filterAccount" @input="$emit('update:filterAccount', $event.target.value === 'null' ? null : parseInt($event.target.value))" class="w-full bg-slate-800 text-white text-xs font-bold py-2.5 pl-3 pr-8 rounded-xl border border-slate-700 outline-none appearance-none focus:border-blue-500 transition-colors">
+                        <option :value="null">Wszystkie konta</option>
+                        <option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option>
+                    </select>
+                    <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">▼</div>
+                </div>
+                <div class="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
+                    <button @click="$emit('update:filterStatus', 'all')" :class="filterStatus === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Wsz.</button>
+                    <button @click="$emit('update:filterStatus', 'zrealizowana')" :class="filterStatus === 'zrealizowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Zreal.</button>
+                    <button @click="$emit('update:filterStatus', 'planowana')" :class="filterStatus === 'planowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Plan.</button>
+                </div>
+            </div>
+        </div>
+
         <div v-if="viewMode === 'list'" class="space-y-3">
             <div v-if="filteredTransactions.length === 0" class="text-center text-slate-500 py-10">Brak transakcji</div>
-            <div v-for="tx in filteredTransactions" :key="tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3 group transition-all" :class="tx.status === 'planowana' ? 'opacity-70 border-dashed border-slate-600' : ''"><div :class="getIconClass(tx.type)" class="w-10 h-10 rounded-full flex items-center justify-center text-lg relative shrink-0">{{ getIcon(tx.type) }}<div v-if="tx.status === 'planowana'" class="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full border border-slate-900"></div></div><div class="flex-1 min-w-0"><div class="font-semibold text-slate-200 text-sm truncate pr-1">{{ tx.desc }}</div><div class="text-xs text-slate-500 truncate">{{ tx.category }} • {{ formatDateShort(tx.date) }}</div></div><div class="flex flex-col items-end gap-1 shrink-0"><div :class="getColorClass(tx.type)" class="font-bold text-sm whitespace-nowrap">{{ tx.type === 'income' ? '+' : (tx.type === 'transfer' ? '' : '-') }}{{ formatMoney(tx.amount) }}</div><div class="flex items-center gap-3 mt-1"><button v-if="tx.status === 'planowana'" @click="$emit('realize-tx', tx)" class="w-7 h-7 rounded-full bg-green-600/20 text-green-400 flex items-center justify-center hover:bg-green-600 hover:text-white transition-colors">✓</button><button @click="$emit('copy-tx', tx)" class="text-slate-500 hover:text-blue-400 p-1" title="Kopiuj">❐</button><button @click="$emit('edit-tx', tx)" class="text-slate-500 hover:text-blue-400 p-1">✎</button><button @click="$emit('delete-tx', tx.id)" class="text-slate-500 hover:text-red-500 p-1">×</button></div></div></div>
+            <div v-for="tx in filteredTransactions" :key="tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3 group transition-all" :class="tx.status === 'planowana' ? 'opacity-70 border-dashed border-slate-600' : ''">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0" 
+                     :style="{ backgroundColor: (tx.category_color || (tx.type === 'income' ? '#22c55e' : '#ef4444')) + '20', color: tx.category_color || (tx.type === 'income' ? '#22c55e' : '#ef4444') }">
+                    <svg v-if="tx.category_icon && iconPaths[tx.category_icon]" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" class="w-5 h-5">
+                        <path :d="iconPaths[tx.category_icon]" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span v-else class="text-lg">{{ getIcon(tx.type) }}</span>
+                    <div v-if="tx.status === 'planowana'" class="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full border border-slate-900"></div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-semibold text-slate-200 text-sm truncate pr-1">{{ tx.desc }}</div>
+                    <div class="text-xs text-slate-500 truncate">{{ tx.category }} • {{ formatDateShort(tx.date) }}</div>
+                </div>
+                <div class="flex flex-col items-end gap-1 shrink-0">
+                    <div :class="getColorClass(tx.type)" class="font-bold text-sm whitespace-nowrap">{{ tx.type === 'income' ? '+' : (tx.type === 'transfer' ? '' : '-') }}{{ formatMoney(tx.amount) }}</div>
+                    <div class="flex items-center gap-3 mt-1">
+                        <button v-if="tx.status === 'planowana'" @click="$emit('realize-tx', tx)" class="w-7 h-7 rounded-full bg-green-600/20 text-green-400 flex items-center justify-center hover:bg-green-600 hover:text-white transition-colors">✓</button>
+                        <button @click="$emit('copy-tx', tx)" class="text-slate-500 hover:text-blue-400 p-1" title="Kopiuj">❐</button>
+                        <button @click="$emit('edit-tx', tx)" class="text-slate-500 hover:text-blue-400 p-1">✎</button>
+                        <button @click="$emit('delete-tx', tx.id)" class="text-slate-500 hover:text-red-500 p-1">×</button>
+                    </div>
+                </div>
+            </div>
         </div>
+
         <div v-if="viewMode === 'categories'" class="grid grid-cols-2 gap-3">
-            <div v-for="cat in groupedCategories" :key="cat.name" @click="$emit('open-category', cat)" class="glass-panel p-4 rounded-2xl active:scale-95 transition-transform cursor-pointer"><div class="flex justify-between items-start mb-1"><div class="font-bold text-slate-200 truncate text-sm">{{ cat.name }}</div><div class="text-xs text-slate-500">{{ cat.count }}</div></div><div :class="cat.total < 0 ? 'text-red-400' : 'text-green-400'" class="text-lg font-bold">{{ formatMoney(Math.abs(cat.total)) }}</div><div v-if="cat.limit > 0" class="mt-2"><div class="flex justify-between text-[10px] text-slate-400 mb-0.5"><span>{{ Math.round((Math.abs(cat.total) / cat.limit) * 100) }}%</span><span>Limit: {{ formatMoney(cat.limit) }}</span></div><div class="budget-bar-bg"><div class="budget-bar-fill" :class="Math.abs(cat.total) > cat.limit ? 'bg-red-500' : (Math.abs(cat.total) > cat.limit * 0.8 ? 'bg-yellow-500' : 'bg-green-500')" :style="{ width: Math.min(100, (Math.abs(cat.total) / cat.limit) * 100) + '%' }"></div></div></div><div v-else class="mt-2 text-[10px] text-slate-600 text-center">Kliknij, aby ustawić budżet</div></div>
+            <div v-for="cat in groupedCategories" :key="cat.name" @click="$emit('open-category', cat)" class="glass-panel p-4 rounded-2xl active:scale-95 transition-transform cursor-pointer">
+                <div class="flex justify-between items-start mb-1">
+                    <div class="font-bold text-slate-200 truncate text-sm">{{ cat.name }}</div>
+                    <div class="text-xs text-slate-500">{{ cat.count }}</div>
+                </div>
+                <div :class="cat.total < 0 ? 'text-red-400' : 'text-green-400'" class="text-lg font-bold">{{ formatMoney(Math.abs(cat.total)) }}</div>
+                <div v-if="cat.limit > 0" class="mt-2">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                        <span>{{ Math.round((Math.abs(cat.total) / cat.limit) * 100) }}%</span>
+                        <span>Limit: {{ formatMoney(cat.limit) }}</span>
+                    </div>
+                    <div class="budget-bar-bg">
+                        <div class="budget-bar-fill" :class="Math.abs(cat.total) > cat.limit ? 'bg-red-500' : (Math.abs(cat.total) > cat.limit * 0.8 ? 'bg-yellow-500' : 'bg-green-500')" :style="{ width: Math.min(100, (Math.abs(cat.total) / cat.limit) * 100) + '%' }"></div>
+                    </div>
+                </div>
+                <div v-else class="mt-2 text-[10px] text-slate-600 text-center">Kliknij, aby ustawić budżet</div>
+            </div>
         </div>
+
         <div v-show="viewMode === 'chart'" class="space-y-6">
-            <div class="glass-panel p-4 rounded-2xl border-l-4 border-green-500"><div class="flex justify-between items-center mb-3"><div><div class="text-xs text-slate-400 uppercase font-bold mb-1">Stopa Oszczędności</div><div class="text-sm text-slate-200">Zachowano w tym miesiącu:</div></div><div class="text-right"><div class="text-2xl font-bold text-green-400">{{ dashboard.savings_rate.toFixed(1) }}%</div><div class="text-[10px] text-slate-500">{{ formatMoney(dashboard.savings_realized + (dashboard.monthly_income_realized - dashboard.monthly_expenses_realized - dashboard.savings_realized)) }}</div></div></div><div class="pt-3 border-t border-white/10 text-xs space-y-1"><div class="flex justify-between text-slate-400"><span>Nadwyżka (Przych. - Wyd.):</span><span>{{ formatMoney(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized - dashboard.savings_realized) }}</span></div><div class="flex justify-between text-white font-bold"><span>Transfery na oszczędności:</span><span>{{ formatMoney(dashboard.savings_realized) }}</span></div></div></div>
-            <div class="glass-panel p-4 rounded-2xl"><h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Trend Finansowy</h3><div class="relative h-48 w-full"><canvas id="trendChart"></canvas></div></div>
-            <div class="glass-panel p-5 rounded-2xl mb-4 relative"><h3 class="text-slate-400 text-xs font-bold mb-6 uppercase tracking-wider text-center">Gdzie uciekają pieniądze?</h3><div class="relative h-64 w-full flex justify-center items-center"><canvas id="expenseDoughnut" class="relative z-10"></canvas><div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0 transition-all duration-300"><div v-if="!selectedChartSegment" class="text-center animate-fade-in"><div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Razem</div><div class="text-2xl font-bold text-white tracking-tight">{{ formatMoney(Math.abs(dashboard.monthly_expenses_realized)) }}</div></div><div v-else class="text-center animate-fade-in"><div class="text-[10px] font-bold uppercase tracking-widest mb-1" :style="{ color: selectedChartSegment.color }">{{ selectedChartSegment.name }}</div><div class="text-2xl font-bold text-white tracking-tight">{{ formatMoney(selectedChartSegment.amount) }}</div><div class="text-[10px] text-slate-500 mt-1">Kliknij tło, aby wrócić</div></div></div></div></div>
-            <div class="glass-panel p-5 rounded-2xl"><h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Struktura Wydatków</h3><div class="space-y-5"><div v-for="(cat, index) in expenseCategories" :key="cat.name" class="group cursor-pointer" @click="$emit('update:selectedChartSegment', { name: cat.name, amount: Math.abs(cat.total), color: chartColors[index % chartColors.length] })"><div class="flex justify-between items-end mb-1"><div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.3)]" :style="{ backgroundColor: chartColors[index % chartColors.length] }"></div><span class="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{{ cat.name }}</span></div><div class="text-right"><span class="text-sm font-bold text-white">{{ formatMoney(Math.abs(cat.total)) }}</span></div></div><div class="flex items-center gap-3"><div class="flex-1 h-1.5 bg-slate-700/50 rounded-full overflow-hidden"><div class="h-full rounded-full relative transition-all duration-500" :style="{ width: cat.percent + '%', backgroundColor: chartColors[index % chartColors.length] }"><div class="absolute top-0 bottom-0 right-0 w-full bg-gradient-to-l from-white/20 to-transparent"></div></div></div><span class="text-xs text-slate-400 font-mono font-bold w-10 text-right">{{ cat.percent }}%</span></div></div><div v-if="expenseCategories.length === 0" class="text-center py-4"><div class="text-2xl mb-2">🤷‍♂️</div><div class="text-slate-500 text-xs">Brak wydatków w tym okresie</div></div></div></div>
+            <div class="glass-panel p-4 rounded-2xl border-l-4 border-green-500">
+                <div class="flex justify-between items-center mb-3">
+                    <div>
+                        <div class="text-xs text-slate-400 uppercase font-bold mb-1">Stopa Oszczędności</div>
+                        <div class="text-sm text-slate-200">Zachowano w tym miesiącu:</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-2xl font-bold text-green-400">{{ dashboard.savings_rate.toFixed(1) }}%</div>
+                        <div class="text-[10px] text-slate-500">{{ formatMoney(dashboard.savings_realized + (dashboard.monthly_income_realized - dashboard.monthly_expenses_realized - dashboard.savings_realized)) }}</div>
+                    </div>
+                </div>
+                <div class="pt-3 border-t border-white/10 text-xs space-y-1">
+                    <div class="flex justify-between text-slate-400"><span>Nadwyżka (Przych. - Wyd.):</span><span>{{ formatMoney(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized - dashboard.savings_realized) }}</span></div>
+                    <div class="flex justify-between text-white font-bold"><span>Transfery na oszczędności:</span><span>{{ formatMoney(dashboard.savings_realized) }}</span></div>
+                </div>
+            </div>
+            <div class="glass-panel p-4 rounded-2xl">
+                <h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Trend Finansowy</h3>
+                <div class="relative h-48 w-full"><canvas id="trendChart"></canvas></div>
+            </div>
+            <div class="glass-panel p-5 rounded-2xl mb-4 relative">
+                <h3 class="text-slate-400 text-xs font-bold mb-6 uppercase tracking-wider text-center">Gdzie uciekają pieniądze?</h3>
+                <div class="relative h-64 w-full flex justify-center items-center">
+                    <canvas id="expenseDoughnut" class="relative z-10"></canvas>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0 transition-all duration-300">
+                        <div v-if="!selectedChartSegment" class="text-center animate-fade-in">
+                            <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Razem</div>
+                            <div class="text-2xl font-bold text-white tracking-tight">{{ formatMoney(Math.abs(dashboard.monthly_expenses_realized)) }}</div>
+                        </div>
+                        <div v-else class="text-center animate-fade-in">
+                            <div class="text-[10px] font-bold uppercase tracking-widest mb-1" :style="{ color: selectedChartSegment.color }">{{ selectedChartSegment.name }}</div>
+                            <div class="text-2xl font-bold text-white tracking-tight">{{ formatMoney(selectedChartSegment.amount) }}</div>
+                            <div class="text-[10px] text-slate-500 mt-1">Kliknij tło, aby wrócić</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="glass-panel p-5 rounded-2xl">
+                <h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Struktura Wydatków</h3>
+                <div class="space-y-5">
+                    <div v-for="(cat, index) in expenseCategories" :key="cat.name" class="group cursor-pointer" @click="$emit('update:selectedChartSegment', { name: cat.name, amount: Math.abs(cat.total), color: chartColors[index % chartColors.length] })">
+                        <div class="flex justify-between items-end mb-1">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.3)]" :style="{ backgroundColor: chartColors[index % chartColors.length] }"></div>
+                                <span class="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{{ cat.name }}</span>
+                            </div>
+                            <div class="text-right"><span class="text-sm font-bold text-white">{{ formatMoney(Math.abs(cat.total)) }}</span></div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="flex-1 h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full relative transition-all duration-500" :style="{ width: cat.percent + '%', backgroundColor: chartColors[index % chartColors.length] }">
+                                    <div class="absolute top-0 bottom-0 right-0 w-full bg-gradient-to-l from-white/20 to-transparent"></div>
+                                </div>
+                            </div>
+                            <span class="text-xs text-slate-400 font-mono font-bold w-10 text-right">{{ cat.percent }}%</span>
+                        </div>
+                    </div>
+                    <div v-if="expenseCategories.length === 0" class="text-center py-4">
+                        <div class="text-2xl mb-2">🤷‍♂️</div>
+                        <div class="text-slate-500 text-xs">Brak wydatków w tym okresie</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>`
 }

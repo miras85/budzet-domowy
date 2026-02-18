@@ -3,29 +3,17 @@ import * as Utils from './utils.js';
 import * as API from './api.js';
 import * as Charts from './charts.js';
 
-// Import Komponentów
+// Import Komponentów (z wymuszeniem odświeżenia cache)
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js';
+import DashboardView from './components/DashboardView.js?v=20';
 import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js';
 import PaymentsView from './components/PaymentsView.js';
-import SettingsView from './components/SettingsView.js';
+import SettingsView from './components/SettingsView.js?v=20';
 import AddTransactionView from './components/AddTransactionView.js';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
 import TheNavigation from './components/TheNavigation.js';
-
-// --- REJESTRACJA SERVICE WORKER ---
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        // ZMIANA TUTAJ: dodaliśmy ?v=2
-        navigator.serviceWorker.register('/sw.js?v=2')
-            .then(reg => console.log('Service Worker zarejestrowany!', reg.scope))
-            .catch(err => console.error('Błąd Service Workera:', err));
-    });
-}
-// ----------------------------------
-
 
 const app = createApp({
     components: {
@@ -163,57 +151,69 @@ const app = createApp({
         async processRecurring(pay) { await API.recurring.process(pay.id, new Date().toISOString().split('T')[0]); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.fetchData(); this.fetchAccounts(); this.notify('success', 'Zaksięgowano'); },
         async skipRecurring(pay) { if(!confirm("Pominąć?")) return; await API.recurring.skip(pay.id); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.notify('info', 'Pominięto'); },
 
-        async addCategory() { if(!this.newCategoryName) return; await API.categories.create(this.newCategoryName); this.newCategoryName = ''; this.fetchCategories(); this.notify('success', 'Dodano'); },
+        async addCategory(catData) {
+            if(!catData.name) return;
+            await API.categories.create(catData);
+            this.fetchCategories();
+            this.notify('success', 'Dodano kategorię');
+        },
         async deleteCategory(id) { if(!confirm("Usunąć?")) return; await API.categories.delete(id); this.fetchCategories(); this.notify('info', 'Usunięto'); },
         async updateCategoryLimit(cat) { if (!cat.id) return; await API.categories.update(cat.id, { name: cat.name, monthly_limit: parseFloat(cat.limit) }); this.fetchCategories(); this.notify('success', "Zapisano"); },
+        async updateCategory(cat) {
+            if (!cat.id) return;
+            await API.categories.update(cat.id, {
+                name: cat.name,
+                monthly_limit: parseFloat(cat.limit || 0),
+                icon: cat.icon_name,
+                color: cat.color
+            });
+            this.fetchCategories();
+            this.notify('success', "Zaktualizowano kategorię");
+        },
+
         async addOverride() { await API.settings.addOverride(this.newOverride); this.fetchOverrides(); this.notify('success', 'Dodano'); },
         async deleteOverride(id) { if(!confirm("Usunąć?")) return; await API.settings.deleteOverride(id); this.fetchOverrides(); this.notify('info', 'Usunięto'); },
         async changePassword() { if(!this.security.oldPassword || !this.security.newPassword) return this.notify('error', "Wpisz hasła"); try { await API.auth.changePassword(this.security.oldPassword, this.security.newPassword); this.notify('success', "Zmieniono"); this.security.oldPassword = ''; this.security.newPassword = ''; } catch(e) { this.notify('error', "Błąd"); } },
         async registerUser() { if(!this.security.newUsername || !this.security.newUserPass) return this.notify('error', "Wpisz dane"); try { await API.auth.register(this.security.newUsername, this.security.newUserPass); this.notify('success', "Dodano"); this.security.newUsername = ''; this.security.newUserPass = ''; } catch(e) { this.notify('error', "Błąd"); } },
 
-        // --- DODAJ TE METODY (WYSZUKIWANIE) ---
-                openSearch() {
-                    this.showSearch = true;
-                    const now = new Date();
-                    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-                    this.searchCriteria.date_from = firstDay.toISOString().split('T')[0];
-                    this.searchCriteria.date_to = now.toISOString().split('T')[0];
-                    this.searchResults = null;
-                },
-                closeSearch() {
-                    this.showSearch = false;
-                    this.searchResults = null;
-                },
-                applyDatePreset(months) {
-                    const end = new Date();
-                    const start = new Date();
-                    start.setMonth(start.getMonth() - months);
-                    this.searchCriteria.date_to = end.toISOString().split('T')[0];
-                    this.searchCriteria.date_from = start.toISOString().split('T')[0];
-                    this.performSearch();
-                },
-                performSearch() {
-                    const params = new URLSearchParams();
-                    if(this.searchCriteria.q) params.append('q', this.searchCriteria.q);
-                    if(this.searchCriteria.date_from) params.append('date_from', this.searchCriteria.date_from);
-                    if(this.searchCriteria.date_to) params.append('date_to', this.searchCriteria.date_to);
-                    if(this.searchCriteria.category_id) params.append('category_id', this.searchCriteria.category_id);
-                    if(this.searchCriteria.account_id) params.append('account_id', this.searchCriteria.account_id);
-                    if(this.searchCriteria.type && this.searchCriteria.type !== 'all') params.append('type', this.searchCriteria.type);
-                    if(this.searchCriteria.min_amount) params.append('min_amount', this.searchCriteria.min_amount);
-                    if(this.searchCriteria.max_amount) params.append('max_amount', this.searchCriteria.max_amount);
+        openSearch() {
+            this.showSearch = true;
+            const now = new Date();
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            this.searchCriteria.date_from = firstDay.toISOString().split('T')[0];
+            this.searchCriteria.date_to = now.toISOString().split('T')[0];
+            this.searchResults = null;
+        },
+        closeSearch() { this.showSearch = false; this.searchResults = null; },
+        applyDatePreset(months) {
+            const end = new Date();
+            const start = new Date();
+            start.setMonth(start.getMonth() - months);
+            this.searchCriteria.date_to = end.toISOString().split('T')[0];
+            this.searchCriteria.date_from = start.toISOString().split('T')[0];
+            this.performSearch();
+        },
+        performSearch() {
+            const params = new URLSearchParams();
+            if(this.searchCriteria.q) params.append('q', this.searchCriteria.q);
+            if(this.searchCriteria.date_from) params.append('date_from', this.searchCriteria.date_from);
+            if(this.searchCriteria.date_to) params.append('date_to', this.searchCriteria.date_to);
+            if(this.searchCriteria.category_id) params.append('category_id', this.searchCriteria.category_id);
+            if(this.searchCriteria.account_id) params.append('account_id', this.searchCriteria.account_id);
+            if(this.searchCriteria.type && this.searchCriteria.type !== 'all') params.append('type', this.searchCriteria.type);
+            if(this.searchCriteria.min_amount) params.append('min_amount', this.searchCriteria.min_amount);
+            if(this.searchCriteria.max_amount) params.append('max_amount', this.searchCriteria.max_amount);
 
-                    API.transactions.search(params.toString()).then(data => {
-                        this.searchResults = data.transactions;
-                        this.searchSummary = data.summary;
-                    });
-                },
-                clearSearchFilters() {
-                    this.searchCriteria = { q: '', date_from: '', date_to: '', category_id: null, account_id: null, type: 'all', min_amount: '', max_amount: '' };
-                    this.searchResults = null;
-                },
-                // --------------------------------------
-        
+            API.transactions.search(params.toString()).then(data => {
+                this.searchResults = data.transactions;
+                this.searchSummary = data.summary;
+            });
+        },
+        clearSearchFilters() {
+            this.searchCriteria = { q: '', date_from: '', date_to: '', category_id: null, account_id: null, type: 'all', min_amount: '', max_amount: '' };
+            this.searchResults = null;
+        },
+
         triggerImport(accountId) { this.importTargetAccountId = accountId; const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv'; input.onchange = e => { if (e.target.files.length > 0) this.processImportFile(e.target.files[0]); }; input.click(); },
         async processImportFile(file) { try { const res = await API.importCSV.preview(file); if (!res.ok) throw new Error("Błąd"); const data = await res.json(); if (data.length === 0) return this.notify('error', "Brak danych"); this.importData = data.map(tx => ({...tx, ignore: false})); } catch (e) { this.notify('error', "Błąd importu"); } },
         async submitImport() { if (!this.importData || !this.importTargetAccountId) return; const toImport = this.importData.filter(tx => !tx.ignore); if (toImport.length === 0) return; const missingCat = toImport.find(tx => !tx.category_id); if (missingCat) return this.notify('error', "Brak kategorii"); try { await API.importCSV.confirm(this.importTargetAccountId, toImport); this.notify('success', "Zaimportowano"); this.importData = null; this.importTargetAccountId = null; this.fetchData(); this.fetchAccounts(); } catch (e) { this.notify('error', "Błąd zapisu"); } },

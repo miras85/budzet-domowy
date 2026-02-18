@@ -1,4 +1,4 @@
-const CACHE_NAME = 'domowy-budzet-v3'; // Zmieniłem na v3 dla pewności
+const CACHE_NAME = 'domowy-budzet-v7'; // Zmieniłem na v4 dla pewności
 
 const ASSETS_TO_CACHE = [
     '/',
