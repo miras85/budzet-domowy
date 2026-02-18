@@ -3,7 +3,6 @@ let doughnutChartInstance = null;
 
 export function renderTrendChart(ctx, data) {
     if (trendChartInstance) trendChartInstance.destroy();
-    
     trendChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
@@ -14,57 +13,30 @@ export function renderTrendChart(ctx, data) {
             ]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
-            scales: {
-                y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-                x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }
-            }
+            scales: { y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 10 } } }, x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } } }
         }
     });
 }
 
 export function renderDoughnutChart(ctx, categories, chartColors, onClickCallback) {
-    if (doughnutChartInstance) {
-        doughnutChartInstance.destroy();
-        doughnutChartInstance = null;
-    }
-
+    if (doughnutChartInstance) { doughnutChartInstance.destroy(); doughnutChartInstance = null; }
     const labels = categories.map(c => c.name);
     const data = categories.map(c => Math.abs(c.total));
     const bgColors = categories.map((_, i) => chartColors[i % chartColors.length]);
 
     doughnutChartInstance = new Chart(ctx, {
         type: 'doughnut',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: data,
-                backgroundColor: bgColors,
-                borderWidth: 0,
-                hoverOffset: 10
-            }]
-        },
+        data: { labels: labels, datasets: [{ data: data, backgroundColor: bgColors, borderWidth: 0, hoverOffset: 10 }] },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '75%',
-            plugins: {
-                legend: { display: false },
-                tooltip: { enabled: false }
-            },
+            responsive: true, maintainAspectRatio: false, cutout: '75%',
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
             onClick: (evt, elements) => {
                 if (elements.length > 0) {
                     const index = elements[0].index;
-                    onClickCallback({
-                        name: labels[index],
-                        amount: data[index],
-                        color: bgColors[index]
-                    });
-                } else {
-                    onClickCallback(null);
-                }
+                    onClickCallback({ name: labels[index], amount: data[index], color: bgColors[index] });
+                } else { onClickCallback(null); }
             }
         }
     });

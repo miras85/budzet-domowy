@@ -2,7 +2,6 @@ const state = {
     token: localStorage.getItem('token') || null
 };
 
-// Wewnętrzny wrapper do fetch z obsługą tokena
 async function authFetch(url, options = {}) {
     if (!options.headers) options.headers = {};
     if (state.token) {
@@ -27,10 +26,7 @@ export function getToken() { return state.token; }
 
 export function logout() {
     setToken(null);
-    // Opcjonalnie przeładowanie strony, ale Vue obsłuży to reaktywnie
 }
-
-// --- ENDPOINTY ---
 
 export const auth = {
     async login(username, password) {
@@ -58,199 +54,68 @@ export const auth = {
 };
 
 export const finance = {
-    async getDashboard(offset) {
-        return (await authFetch(`/api/dashboard?offset=${offset}`)).json();
-    },
-    async getTrend() {
-        return (await authFetch('/api/stats/trend')).json();
-    }
+    async getDashboard(offset) { return (await authFetch(`/api/dashboard?offset=${offset}`)).json(); },
+    async getTrend() { return (await authFetch('/api/stats/trend')).json(); }
 };
 
 export const transactions = {
-    async create(txData) {
-        return authFetch('/api/transactions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(txData)
-        });
-    },
-    async update(id, txData) {
-        return authFetch(`/api/transactions/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(txData)
-        });
-    },
-    async delete(id) {
-        return authFetch(`/api/transactions/${id}`, { method: 'DELETE' });
-    },
-    async search(paramsString) {
-        return (await authFetch(`/api/transactions/search?${paramsString}`)).json();
-    }
+    async create(txData) { return authFetch('/api/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(txData) }); },
+    async update(id, txData) { return authFetch(`/api/transactions/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(txData) }); },
+    async delete(id) { return authFetch(`/api/transactions/${id}`, { method: 'DELETE' }); },
+    async search(params) { return (await authFetch(`/api/transactions/search?${params}`)).json(); }
 };
 
 export const accounts = {
-    async getAll() {
-        return (await authFetch('/api/accounts')).json();
-    },
-    async create(data) {
-        return authFetch('/api/accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async update(id, data) {
-        return authFetch(`/api/accounts/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async delete(id) {
-        return authFetch(`/api/accounts/${id}`, { method: 'DELETE' });
-    }
+    async getAll() { return (await authFetch('/api/accounts')).json(); },
+    async create(data) { return authFetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async update(id, data) { return authFetch(`/api/accounts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async delete(id) { return authFetch(`/api/accounts/${id}`, { method: 'DELETE' }); }
 };
 
 export const goals = {
-    async getAll() {
-        return (await authFetch('/api/goals')).json();
-    },
-    async create(data) {
-        return authFetch('/api/goals', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async delete(id) {
-        return authFetch(`/api/goals/${id}`, { method: 'DELETE' });
-    },
-    async fund(id, data) {
-        return authFetch(`/api/goals/${id}/fund`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async withdraw(id, data) {
-        return authFetch(`/api/goals/${id}/withdraw`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async transfer(id, data) {
-        return authFetch(`/api/goals/${id}/transfer`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    }
+    async getAll() { return (await authFetch('/api/goals')).json(); },
+    async create(data) { return authFetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async delete(id) { return authFetch(`/api/goals/${id}`, { method: 'DELETE' }); },
+    async fund(id, data) { return authFetch(`/api/goals/${id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async withdraw(id, data) { return authFetch(`/api/goals/${id}/withdraw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async transfer(id, data) { return authFetch(`/api/goals/${id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); }
 };
 
 export const loans = {
-    async getAll() {
-        return (await authFetch('/api/loans')).json();
-    },
-    async create(data) {
-        return authFetch('/api/loans', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async update(id, data) {
-        return authFetch(`/api/loans/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    }
+    async getAll() { return (await authFetch('/api/loans')).json(); },
+    async create(data) { return authFetch('/api/loans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async update(id, data) { return authFetch(`/api/loans/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); }
 };
 
 export const recurring = {
-    async getAll() {
-        return (await authFetch('/api/recurring')).json();
-    },
-    async checkDue() {
-        return (await authFetch('/api/recurring/check')).json();
-    },
-    async create(data) {
-        return authFetch('/api/recurring', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async delete(id) {
-        return authFetch(`/api/recurring/${id}`, { method: 'DELETE' });
-    },
-    async process(id, dateStr) {
-        return authFetch(`/api/recurring/${id}/process`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date: dateStr })
-        });
-    },
-    async skip(id) {
-        return authFetch(`/api/recurring/${id}/skip`, { method: 'POST' });
-    }
+    async getAll() { return (await authFetch('/api/recurring')).json(); },
+    async checkDue() { return (await authFetch('/api/recurring/check')).json(); },
+    async create(data) { return authFetch('/api/recurring', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async delete(id) { return authFetch(`/api/recurring/${id}`, { method: 'DELETE' }); },
+    async process(id, dateStr) { return authFetch(`/api/recurring/${id}/process`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: dateStr }) }); },
+    async skip(id) { return authFetch(`/api/recurring/${id}/skip`, { method: 'POST' }); }
 };
 
 export const categories = {
-    async getAll() {
-        return (await authFetch('/api/categories')).json();
-    },
-    async create(name) {
-        return authFetch('/api/categories', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
-    },
-    async update(id, data) {
-        return authFetch(`/api/categories/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async delete(id) {
-        return authFetch(`/api/categories/${id}`, { method: 'DELETE' });
-    }
+    async getAll() { return (await authFetch('/api/categories')).json(); },
+    async create(name) { return authFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }); },
+    async update(id, data) { return authFetch(`/api/categories/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async delete(id) { return authFetch(`/api/categories/${id}`, { method: 'DELETE' }); }
 };
 
 export const settings = {
-    async getOverrides() {
-        return (await authFetch('/api/settings/payday-overrides')).json();
-    },
-    async addOverride(data) {
-        return authFetch('/api/settings/payday-overrides', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-    },
-    async deleteOverride(id) {
-        return authFetch(`/api/settings/payday-overrides/${id}`, { method: 'DELETE' });
-    }
+    async getOverrides() { return (await authFetch('/api/settings/payday-overrides')).json(); },
+    async addOverride(data) { return authFetch('/api/settings/payday-overrides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async deleteOverride(id) { return authFetch(`/api/settings/payday-overrides/${id}`, { method: 'DELETE' }); }
 };
 
 export const importCSV = {
     async preview(file) {
         const formData = new FormData();
         formData.append('file', file);
-        return authFetch('/api/import/preview', {
-            method: 'POST',
-            body: formData
-        });
+        return authFetch('/api/import/preview', { method: 'POST', body: formData });
     },
     async confirm(accountId, transactions) {
-        return authFetch('/api/import/confirm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ account_id: accountId, transactions })
-        });
+        return authFetch('/api/import/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_id: accountId, transactions }) });
     }
 };
