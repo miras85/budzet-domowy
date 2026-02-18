@@ -15,6 +15,18 @@ import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
 import TheNavigation from './components/TheNavigation.js';
 
+// --- REJESTRACJA SERVICE WORKER ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        // ZMIANA TUTAJ: dodaliśmy ?v=2
+        navigator.serviceWorker.register('/sw.js?v=2')
+            .then(reg => console.log('Service Worker zarejestrowany!', reg.scope))
+            .catch(err => console.error('Błąd Service Workera:', err));
+    });
+}
+// ----------------------------------
+
+
 const app = createApp({
     components: {
         LoginView, DashboardView, AccountsView, GoalsView, PaymentsView, SettingsView, AddTransactionView, SearchView, ImportModal, TheNavigation
@@ -159,8 +171,48 @@ const app = createApp({
         async changePassword() { if(!this.security.oldPassword || !this.security.newPassword) return this.notify('error', "Wpisz hasła"); try { await API.auth.changePassword(this.security.oldPassword, this.security.newPassword); this.notify('success', "Zmieniono"); this.security.oldPassword = ''; this.security.newPassword = ''; } catch(e) { this.notify('error', "Błąd"); } },
         async registerUser() { if(!this.security.newUsername || !this.security.newUserPass) return this.notify('error', "Wpisz dane"); try { await API.auth.register(this.security.newUsername, this.security.newUserPass); this.notify('success', "Dodano"); this.security.newUsername = ''; this.security.newUserPass = ''; } catch(e) { this.notify('error', "Błąd"); } },
 
-        performSearch() { const params = new URLSearchParams(); if(this.searchCriteria.q) params.append('q', this.searchCriteria.q); if(this.searchCriteria.date_from) params.append('date_from', this.searchCriteria.date_from); if(this.searchCriteria.date_to) params.append('date_to', this.searchCriteria.date_to); if(this.searchCriteria.category_id) params.append('category_id', this.searchCriteria.category_id); if(this.searchCriteria.account_id) params.append('account_id', this.searchCriteria.account_id); if(this.searchCriteria.type && this.searchCriteria.type !== 'all') params.append('type', this.searchCriteria.type); API.transactions.search(params.toString()).then(data => { this.searchResults = data.transactions; this.searchSummary = data.summary; }); },
-        applyDatePreset(months) { const end = new Date(); const start = new Date(); start.setMonth(start.getMonth() - months); this.searchCriteria.date_to = end.toISOString().split('T')[0]; this.searchCriteria.date_from = start.toISOString().split('T')[0]; this.performSearch(); },
+        // --- DODAJ TE METODY (WYSZUKIWANIE) ---
+                openSearch() {
+                    this.showSearch = true;
+                    const now = new Date();
+                    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+                    this.searchCriteria.date_from = firstDay.toISOString().split('T')[0];
+                    this.searchCriteria.date_to = now.toISOString().split('T')[0];
+                    this.searchResults = null;
+                },
+                closeSearch() {
+                    this.showSearch = false;
+                    this.searchResults = null;
+                },
+                applyDatePreset(months) {
+                    const end = new Date();
+                    const start = new Date();
+                    start.setMonth(start.getMonth() - months);
+                    this.searchCriteria.date_to = end.toISOString().split('T')[0];
+                    this.searchCriteria.date_from = start.toISOString().split('T')[0];
+                    this.performSearch();
+                },
+                performSearch() {
+                    const params = new URLSearchParams();
+                    if(this.searchCriteria.q) params.append('q', this.searchCriteria.q);
+                    if(this.searchCriteria.date_from) params.append('date_from', this.searchCriteria.date_from);
+                    if(this.searchCriteria.date_to) params.append('date_to', this.searchCriteria.date_to);
+                    if(this.searchCriteria.category_id) params.append('category_id', this.searchCriteria.category_id);
+                    if(this.searchCriteria.account_id) params.append('account_id', this.searchCriteria.account_id);
+                    if(this.searchCriteria.type && this.searchCriteria.type !== 'all') params.append('type', this.searchCriteria.type);
+                    if(this.searchCriteria.min_amount) params.append('min_amount', this.searchCriteria.min_amount);
+                    if(this.searchCriteria.max_amount) params.append('max_amount', this.searchCriteria.max_amount);
+
+                    API.transactions.search(params.toString()).then(data => {
+                        this.searchResults = data.transactions;
+                        this.searchSummary = data.summary;
+                    });
+                },
+                clearSearchFilters() {
+                    this.searchCriteria = { q: '', date_from: '', date_to: '', category_id: null, account_id: null, type: 'all', min_amount: '', max_amount: '' };
+                    this.searchResults = null;
+                },
+                // --------------------------------------
         
         triggerImport(accountId) { this.importTargetAccountId = accountId; const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv'; input.onchange = e => { if (e.target.files.length > 0) this.processImportFile(e.target.files[0]); }; input.click(); },
         async processImportFile(file) { try { const res = await API.importCSV.preview(file); if (!res.ok) throw new Error("Błąd"); const data = await res.json(); if (data.length === 0) return this.notify('error', "Brak danych"); this.importData = data.map(tx => ({...tx, ignore: false})); } catch (e) { this.notify('error', "Błąd importu"); } },
