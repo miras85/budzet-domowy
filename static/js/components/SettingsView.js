@@ -1,4 +1,4 @@
-import { ICON_PATHS, COLORS } from '../icons.js?v=20';
+import { ICON_PATHS, COLORS } from '../icons.js?v=25';
 
 export default {
     props: ['categories', 'overrides', 'newCategoryName', 'newOverride', 'security'],
@@ -57,7 +57,7 @@ export default {
             <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700 mb-4 transition-all" :class="formCat.id ? 'border-blue-500 ring-1 ring-blue-500/50' : ''">
                 <div class="flex gap-2 mb-3">
                     <button @click="showIconPicker = !showIconPicker" class="w-12 h-12 rounded-xl flex items-center justify-center border border-slate-600 transition-all" :style="{ backgroundColor: formCat.color + '20', borderColor: formCat.color }">
-                        <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" class="w-6 h-6" :style="{ color: formCat.color }">
+                        <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" class="w-6 h-6" :style="{ color: formCat.color }">
                             <path :d="iconPaths[formCat.icon]" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </button>
@@ -74,7 +74,7 @@ export default {
                     <div class="text-[10px] text-slate-400 uppercase font-bold mb-2">Wybierz ikonę</div>
                     <div class="grid grid-cols-6 gap-2 max-h-60 overflow-y-auto pr-1">
                         <div v-for="(path, name) in iconPaths" :key="name" @click="formCat.icon = name" class="aspect-square rounded-lg flex items-center justify-center cursor-pointer hover:bg-white/5 transition-colors" :class="formCat.icon === name ? 'bg-white/10 ring-1 ring-white/30' : ''">
-                            <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" class="w-5 h-5 text-slate-300">
+                            <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" class="w-5 h-5 text-slate-300">
                                 <path :d="path" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </div>
@@ -84,7 +84,7 @@ export default {
 
             <div class="flex flex-wrap gap-2">
                 <div v-for="cat in categories" :key="cat.id" @click="editCategory(cat)" class="pl-2 pr-2 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer active:scale-95 hover:brightness-110" :class="formCat.id === cat.id ? 'ring-2 ring-white' : ''" :style="{ backgroundColor: (cat.color || '#64748b') + '15', borderColor: (cat.color || '#64748b') + '30', color: (cat.color || '#64748b') }">
-                    <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" class="w-4 h-4">
+                    <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" class="w-4 h-4">
                         <path :d="iconPaths[cat.icon_name || 'tag'] || iconPaths['tag']" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     {{ cat.name }}

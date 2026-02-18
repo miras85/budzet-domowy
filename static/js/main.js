@@ -5,11 +5,11 @@ import * as Charts from './charts.js';
 
 // Import Komponentów (z wymuszeniem odświeżenia cache)
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=20';
+import DashboardView from './components/DashboardView.js?v=25';
 import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js';
 import PaymentsView from './components/PaymentsView.js';
-import SettingsView from './components/SettingsView.js?v=20';
+import SettingsView from './components/SettingsView.js?v=26';
 import AddTransactionView from './components/AddTransactionView.js';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';

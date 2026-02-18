@@ -1,5 +1,5 @@
 import * as Utils from '../utils.js';
-import { ICON_PATHS } from '../icons.js?v=20';
+import { ICON_PATHS } from '../icons.js?v=26';
 
 export default {
     props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment'],
@@ -91,7 +91,7 @@ export default {
             <div v-for="tx in filteredTransactions" :key="tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3 group transition-all" :class="tx.status === 'planowana' ? 'opacity-70 border-dashed border-slate-600' : ''">
                 <div class="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0" 
                      :style="{ backgroundColor: (tx.category_color || (tx.type === 'income' ? '#22c55e' : '#ef4444')) + '20', color: tx.category_color || (tx.type === 'income' ? '#22c55e' : '#ef4444') }">
-                    <svg v-if="tx.category_icon && iconPaths[tx.category_icon]" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" class="w-5 h-5">
+                    <svg v-if="tx.category_icon && iconPaths[tx.category_icon]" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" class="w-5 h-5">
                         <path :d="iconPaths[tx.category_icon]" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     <span v-else class="text-lg">{{ getIcon(tx.type) }}</span>
