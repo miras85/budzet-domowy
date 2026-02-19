@@ -1,5 +1,5 @@
 export function formatMoney(value) {
-    return parseFloat(value).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł';
+    return (parseFloat(value) || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł';
 }
 
 export function formatDateShort(dateStr) {

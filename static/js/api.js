@@ -34,9 +34,17 @@ export const auth = {
         formData.append('username', username);
         formData.append('password', password);
         const res = await fetch('/token', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error('Błąd logowania');
+        
+        if (!res.ok) {
+            // Spróbuj wyciągnąć szczegółowy komunikat z serwera
+            const errorData = await res.json().catch(() => ({}));
+            const errorMsg = errorData.detail || `Błąd: ${res.status}`;
+            throw new Error(errorMsg);
+        }
+        
         return await res.json();
     },
+    // ... reszta bez zmian
     async changePassword(oldPwd, newPwd) {
         return authFetch('/api/users/change-password', {
             method: 'POST',

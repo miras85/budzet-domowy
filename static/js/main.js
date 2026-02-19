@@ -3,7 +3,7 @@ import * as Utils from './utils.js';
 import * as API from './api.js';
 import * as Charts from './charts.js';
 
-// Import Komponentów (z wymuszeniem odświeżenia cache)
+// Import Komponentów
 import LoginView from './components/LoginView.js';
 import DashboardView from './components/DashboardView.js?v=25';
 import AccountsView from './components/AccountsView.js';
@@ -106,12 +106,74 @@ const app = createApp({
         }
     },
     methods: {
-        formatMoney: Utils.formatMoney, formatDateShort: Utils.formatDateShort,
-        notify(type, message) { const id = Date.now(); this.toasts.push({ id, type, title: type==='success'?'Sukces':(type==='error'?'Błąd':'Info'), message }); setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 4000); },
-        removeToast(id) { this.toasts = this.toasts.filter(t => t.id !== id); },
+        formatMoney: Utils.formatMoney,
+        formatDateShort: Utils.formatDateShort,
         
-        async login(username, password) { try { const data = await API.auth.login(username, password); API.setToken(data.access_token); this.isLoggedIn = true; this.refreshAllData(); this.notify('success', 'Zalogowano'); } catch (e) { this.notify('error', "Błąd logowania"); } },
-        logout() { API.logout(); this.isLoggedIn = false; this.notify('info', 'Wylogowano'); },
+        notify(type, message) {
+            const id = Date.now();
+            this.toasts.push({
+                id,
+                type,
+                title: type==='success'?'Sukces':(type==='error'?'Błąd':'Info'),
+                message
+            });
+            setTimeout(() => {
+                this.toasts = this.toasts.filter(t => t.id !== id);
+            }, 4000);
+        },
+        
+        removeToast(id) {
+            this.toasts = this.toasts.filter(t => t.id !== id);
+        },
+        
+        async login(username, password) {
+            try {
+                const data = await API.auth.login(username, password);
+                API.setToken(data.access_token);
+                this.isLoggedIn = true;
+                this.refreshAllData();
+                this.notify('success', 'Zalogowano');
+            } catch (e) {
+                // Wyświetl szczegółowy komunikat błędu z serwera
+                const errorMsg = e.message || "Błąd logowania";
+                this.notify('error', errorMsg);
+            }
+        },
+        
+        logout() {
+            API.logout();
+            this.isLoggedIn = false;
+            
+            // Reset wrażliwych danych
+            this.dashboard = {
+                total_balance: 0,
+                disposable_balance: 0,
+                forecast_ror: 0,
+                savings_realized: 0,
+                savings_rate: 0,
+                total_debt: 0,
+                monthly_income_realized: 0,
+                monthly_income_forecast: 0,
+                monthly_expenses_realized: 0,
+                monthly_expenses_forecast: 0,
+                goals_monthly_need: 0,
+                goals_total_saved: 0,
+                recent_transactions: [],
+                period_start: '',
+                period_end: ''
+            };
+            this.accounts = [];
+            this.categories = [];
+            this.goals = [];
+            this.loansData = { loans: [], upcoming: [] };
+            this.recurringList = [];
+            this.duePayments = [];
+            this.searchResults = null;
+            this.searchSummary = { income: 0, expense: 0, balance: 0, count: 0 };
+            this.importData = null;
+            
+            this.notify('info', 'Wylogowano');
+        },
         
         refreshAllData() { this.fetchData(); this.fetchAccounts(); this.fetchLoans(); this.fetchGoals(); this.fetchCategories(); this.fetchOverrides(); this.fetchRecurring(); this.checkDuePayments(); },
         async fetchData() { if (!this.isLoggedIn) return; try { this.dashboard = await API.finance.getDashboard(this.periodOffset); if (this.accounts.length > 0 && !this.newTx.account_id) this.newTx.account_id = this.accounts[0].id; if (this.viewMode === 'chart') this.renderChart(); } catch (e) { console.error(e); } },
