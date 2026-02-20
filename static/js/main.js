@@ -278,7 +278,47 @@ const app = createApp({
 
         triggerImport(accountId) { this.importTargetAccountId = accountId; const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv'; input.onchange = e => { if (e.target.files.length > 0) this.processImportFile(e.target.files[0]); }; input.click(); },
         async processImportFile(file) { try { const res = await API.importCSV.preview(file); if (!res.ok) throw new Error("Błąd"); const data = await res.json(); if (data.length === 0) return this.notify('error', "Brak danych"); this.importData = data.map(tx => ({...tx, ignore: false})); } catch (e) { this.notify('error', "Błąd importu"); } },
-        async submitImport() { if (!this.importData || !this.importTargetAccountId) return; const toImport = this.importData.filter(tx => !tx.ignore); if (toImport.length === 0) return; const missingCat = toImport.find(tx => !tx.category_id); if (missingCat) return this.notify('error', "Brak kategorii"); try { await API.importCSV.confirm(this.importTargetAccountId, toImport); this.notify('success', "Zaimportowano"); this.importData = null; this.importTargetAccountId = null; this.fetchData(); this.fetchAccounts(); } catch (e) { this.notify('error', "Błąd zapisu"); } },
+        async submitImport() {
+            if (!this.importData || !this.importTargetAccountId) return;
+            const toImport = this.importData.filter(tx => !tx.ignore);
+            if (toImport.length === 0) return this.notify('error', 'Zaznacz przynajmniej jedną transakcję');
+            const missingCat = toImport.find(tx => !tx.category_id);
+            if (missingCat) return this.notify('error', `Transakcja "${missingCat.description}" nie ma kategorii`);
+            
+            try {
+                const response = await API.importCSV.confirm(this.importTargetAccountId, toImport);
+               
+                if (!response.ok) {
+                            throw new Error('Błąd API');
+                        }
+                const data = await response.json();
+             
+                
+                const imported = data.imported || 0;
+                const skipped = data.skipped || 0;
+                
+                // Inteligentny komunikat
+                let message = '';
+                if (imported > 0 && skipped === 0) {
+                    message = `✅ Zaimportowano ${imported} transakcji`;
+                } else if (imported > 0 && skipped > 0) {
+                    message = `✅ Zaimportowano ${imported}, pominięto ${skipped} duplikatów`;
+                } else if (imported === 0 && skipped > 0) {
+                    message = `ℹ️ Wszystkie transakcje już istnieją (pominięto ${skipped})`;
+                } else {
+                    message = 'Brak transakcji do zaimportowania';
+                }
+                
+                this.notify('success', message);
+                this.importData = null;
+                this.importTargetAccountId = null;
+                this.fetchData();
+                this.fetchAccounts();
+            } catch (e) {
+              
+                this.notify('error', "Błąd zapisu: " + (e.message || 'Nieznany błąd'));
+            }
+        },
 
         changePeriod(delta) { this.transitionName = delta > 0 ? 'slide-next' : 'slide-prev'; this.periodOffset += delta; this.fetchData(); },
         handleTouchStart(e) { this.touchStartX = e.changedTouches[0].screenX; },

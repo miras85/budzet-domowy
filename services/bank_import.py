@@ -5,6 +5,7 @@ from typing import Tuple, Optional, List
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException
 import models, schemas
+import utils
 
 def normalize_amount(value: str) -> float:
     if not value:
@@ -209,15 +210,16 @@ async def parse_bank_csv(db: Session, file: UploadFile):
 
 def save_imported_transactions(db: Session, account_id: int, transactions: List[schemas.TransactionImport]):
     count = 0
+    skipped = 0  # Nowy licznik
     print(f"--- PRÓBA ZAPISU {len(transactions)} TRANSAKCJI ---")
     
     for tx in transactions:
-        if tx.ignore: continue
+        if tx.ignore:
+            continue
         
         try:
             # 1. Walidacja kategorii
             cat_id = tx.category_id
-            # Jeśli frontend przysłał 0, pusty string lub None -> zapisz jako NULL
             if not cat_id or cat_id == 0 or cat_id == "0":
                 cat_id = None
             
@@ -229,8 +231,22 @@ def save_imported_transactions(db: Session, account_id: int, transactions: List[
             if isinstance(tx_date, str):
                 tx_date = datetime.strptime(tx_date, "%Y-%m-%d").date()
 
+            # ====== NOWE: SPRAWDZENIE DUPLIKATU ======
+            existing = db.query(models.Transaction).filter(
+                models.Transaction.date == tx_date,
+                models.Transaction.amount == abs(amount),
+                models.Transaction.description == tx.description,
+                models.Transaction.account_id == account_id,
+                models.Transaction.type == tx.type
+            ).first()
+            
+            if existing:
+                skipped += 1
+                continue  # Pomiń tę transakcję, przejdź do kolejnej
+            # ==========================================
+
             new_tx = models.Transaction(
-                amount=abs(amount), # Zawsze dodatnia w bazie
+                amount=abs(amount),
                 description=tx.description,
                 date=tx_date,
                 type=tx.type,
@@ -246,16 +262,19 @@ def save_imported_transactions(db: Session, account_id: int, transactions: List[
             count += 1
             
         except Exception as e:
-            print(f"BŁĄD ZAPISU WIERSZA: {tx.description} -> {e}")
+            print(f"❌ BŁĄD ZAPISU WIERSZA: {tx.description} -> {e}")
             # Nie przerywamy pętli, próbujemy zapisać kolejne
             continue
         
     try:
         db.commit()
-        print(f"--- SUKCES: ZAPISANO {count} TRANSAKCJI ---")
+        result = {"imported": count, "skipped": skipped}
+        print(f"--- ✅ SUKCES: ZAPISANO {count} TRANSAKCJI, POMINIĘTO {skipped} DUPLIKATÓW ---")
+        
+        return result
     except Exception as e:
         db.rollback()
-        print(f"--- BŁĄD COMMIT: {e} ---")
+        print(f"--- ❌ BŁĄD COMMIT: {e} ---")
         raise HTTPException(status_code=500, detail=f"Błąd bazy danych: {str(e)}")
         
-    return {"imported": count}
+    return {"imported": count, "skipped": skipped}  # Zwracamy też liczbę pominiętych

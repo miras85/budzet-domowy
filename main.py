@@ -47,6 +47,32 @@ async def rate_limit_middleware(request: Request, call_next):
     
     response = await call_next(request)
     return response
+    
+    # Security Headers Middleware
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    
+    # Content Security Policy
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com 'unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+    
+    # Inne security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    return response
+    
+    
 # Dołączamy routery
 app.include_router(auth_router.router)
 app.include_router(finance_router.router)
