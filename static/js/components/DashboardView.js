@@ -72,11 +72,14 @@ export default {
             </div>
             <div v-if="viewMode !== 'chart'" class="flex justify-between items-center gap-2">
                 <div class="relative flex-1">
-                    <select :value="filterAccount" @input="$emit('update:filterAccount', $event.target.value === 'null' ? null : parseInt($event.target.value))" class="w-full bg-slate-800 text-white text-xs font-bold py-2.5 pl-3 pr-8 rounded-xl border border-slate-700 outline-none appearance-none focus:border-blue-500 transition-colors">
-                        <option :value="null">Wszystkie konta</option>
-                        <option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option>
+                    <select 
+                        :value="filterAccount" 
+                        @input="$emit('update:filterAccount', $event.target.value === '' ? '' : parseInt($event.target.value))" 
+                        class="w-full bg-slate-800 text-white text-xs font-bold py-2.5 pl-3 pr-8 rounded-xl border border-slate-700 outline-none appearance-none focus:border-blue-500 transition-colors">
+                        <option value="">Wszystkie konta</option>
+                        <option v-for="acc in accounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
                     </select>
-                    <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">▼</div>
+                    <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
                 </div>
                 <div class="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
                     <button @click="$emit('update:filterStatus', 'all')" :class="filterStatus === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Wsz.</button>

@@ -5,7 +5,7 @@ import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=25';
+import DashboardView from './components/DashboardView.js?v=30';
 import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js';
 import PaymentsView from './components/PaymentsView.js';
@@ -41,7 +41,7 @@ const app = createApp({
             importAccountId: null, importData: null, importTargetAccountId: null,
             
             // Filtry
-            filterStatus: 'all', filterAccount: null, isPlanned: false, newCategoryName: '', categorySearch: '',
+            filterStatus: 'all', filterAccount: '', isPlanned: false, newCategoryName: '', categorySearch: '',
             
             // Wykresy
             chartColors: ['#ef4444', '#f97316', '#eab308', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'],
@@ -70,7 +70,12 @@ const app = createApp({
             if (!this.dashboard.recent_transactions) return [];
             let txs = this.dashboard.recent_transactions;
             if (this.filterStatus !== 'all') txs = txs.filter(tx => tx.status === this.filterStatus);
-            if (this.filterAccount) txs = txs.filter(tx => tx.account_id === this.filterAccount || tx.target_account_id === this.filterAccount);
+            if (this.filterAccount && this.filterAccount !== '') {  // Zmień na !== ''
+                const accountId = parseInt(this.filterAccount);
+                if (!isNaN(accountId)) {  // Sprawdź czy to liczba
+                    txs = txs.filter(tx => tx.account_id === accountId || tx.target_account_id === accountId);
+                }
+            }
             return txs;
         },
         filteredCategories() {

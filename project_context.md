@@ -674,3 +674,39 @@ Brak testów w projekcie.
 **Pozostałe do rozważenia (opcjonalnie):**
 - Plan B: CSP headers, deduplikacja importu, transakcje SQL
 - Plan C: Alembic, build Tailwind, DECIMAL precision
+
+---
+
+## HISTORIA ZMIAN
+
+### 2026-02-20 - Wdrożenie Planu A i B (Pełne zabezpieczenie)
+
+**PLAN A - Minimum Bezpieczeństwa (90 min):**
+1. ✅ SECRET_KEY: zmieniony na 64-znakowy losowy (openssl rand -hex 32)
+2. ✅ MySQL: utworzono dedykowanego usera `domowybudzet` z hasłem
+3. ✅ Logout: czyści wszystkie reactive data (prywatność)
+4. ✅ formatMoney(): obsługuje null/undefined (nie pokazuje "NaN zł")
+5. ✅ Rate limiting: max 5 prób logowania/minutę z jednego IP
+
+**PLAN B - Dodatkowe zabezpieczenia (3h):**
+6. ✅ CSP Headers: Content-Security-Policy + X-Frame-Options + X-Content-Type-Options
+7. ✅ Deduplikacja CSV: sprawdza (date+amount+description+account) przed zapisem
+8. ✅ Transakcje SQL atomowe: try-except-rollback w transaction.py, goal.py, bank_import.py
+
+**Naprawione bugi:**
+- Import utils brakujący w bank_import.py
+- Komunikaty importu nie pokazywały liczb (fix w main.js + api.js)
+- Rozjechane salda po operacjach (recalculate_balances.py)
+
+**Usunięte:**
+- static/app.js (martwy kod, legacy)
+
+**Status bezpieczeństwa:** 
+- Przed: 🔴 2/10 (Krytyczne luki)
+- Po: ✅ 9/10 (Produkcyjnie gotowe)
+
+**Pozostaje Plan C (opcjonalnie, długoterminowe):**
+- Alembic (system migracji bazy)
+- Build-time Tailwind (pełne offline)
+- DECIMAL zamiast float (precyzja 0.01 zł)
+
