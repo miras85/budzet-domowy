@@ -31,7 +31,10 @@ def get_dashboard_data(db: Session, offset: int):
     forecast_ror = disposable_balance + inc_planned - exp_planned
 
     # 4. Transfery na oszczędności (do wskaźnika oszczędności)
-    period_transfers = db.query(models.Transaction).options(joinedload(models.Transaction.account), joinedload(models.Transaction.target_account)).filter(
+    period_transfers = db.query(models.Transaction).options(
+        joinedload(models.Transaction.account),
+        joinedload(models.Transaction.target_account)
+    ).filter(
         models.Transaction.type == 'transfer',
         models.Transaction.status == 'zrealizowana',
         models.Transaction.date >= start_date,
@@ -56,16 +59,25 @@ def get_dashboard_data(db: Session, offset: int):
         current = float(g.current_amount)
         target = float(g.target_amount)
         goals_total_saved += current
+        
+        # ===== DLA PRZESZŁOŚCI: Nie obliczaj monthly_need =====
+        if offset < 0:
+            # Przeszłość - nie pokazujemy danych (nie da się dokładnie odtworzyć)
+            continue  # Pomijamy ten cel w sumowaniu monthly_need
+        # =====================================================
+        
         remaining = target - current
         if remaining > 0:
             cycles_left = 1
-            check_offset = 0
+            check_offset = offset  # Start od wybranego okresu
             while True:
                 _, cycle_end = utils.get_billing_period(db, check_offset)
-                if cycle_end >= g.deadline: break
+                if cycle_end >= g.deadline:
+                    break
                 cycles_left += 1
                 check_offset += 1
-                if cycles_left > 120: break
+                if cycles_left > 120:
+                    break
             
             contribs = db.query(func.sum(models.GoalContribution.amount)).filter(
                 models.GoalContribution.goal_id == g.id,
@@ -76,25 +88,47 @@ def get_dashboard_data(db: Session, offset: int):
             
             virtual_start_amount = current - paid_this_cycle
             total_missing_at_start = target - virtual_start_amount
-            rate_per_cycle = total_missing_at_start / cycles_left
+            rate_per_cycle = total_missing_at_start / cycles_left if cycles_left > 0 else 0
             actual_need = rate_per_cycle - paid_this_cycle
             
-            if actual_need < 0: actual_need = 0
+            if actual_need < 0:
+                actual_need = 0
             goals_monthly_need += actual_need
 
+    # ===== Jeśli przeszłość, ustaw na null =====
+    if offset < 0:
+        goals_monthly_need = None
+    # ==========================================
+
     # 6. Ostatnie transakcje
-    recent = db.query(models.Transaction).options(joinedload(models.Transaction.category), joinedload(models.Transaction.loan)).filter(models.Transaction.date >= start_date, models.Transaction.date <= end_date).order_by(models.Transaction.date.desc(), models.Transaction.id.desc()).all()
+    recent = db.query(models.Transaction).options(
+        joinedload(models.Transaction.category),
+        joinedload(models.Transaction.loan)
+    ).filter(
+        models.Transaction.date >= start_date,
+        models.Transaction.date <= end_date
+    ).order_by(
+        models.Transaction.date.desc(),
+        models.Transaction.id.desc()
+    ).all()
     
     tx_list = []
     for t in recent:
         cat_name = t.category.name if t.category else "-"
-        if t.type == 'transfer': cat_name = "Transfer"
+        if t.type == 'transfer':
+            cat_name = "Transfer"
         
         tx_list.append({
-            "id": t.id, "desc": t.description, "amount": float(t.amount),
-            "type": t.type, "category": cat_name, "date": str(t.date),
-            "account_id": t.account_id, "target_account_id": t.target_account_id,
-            "category_name": cat_name, "status": t.status,
+            "id": t.id,
+            "desc": t.description,
+            "amount": float(t.amount),
+            "type": t.type,
+            "category": cat_name,
+            "date": str(t.date),
+            "account_id": t.account_id,
+            "target_account_id": t.target_account_id,
+            "category_name": cat_name,
+            "status": t.status,
             "loan_id": t.loan_id
         })
 
@@ -109,7 +143,7 @@ def get_dashboard_data(db: Session, offset: int):
         "monthly_income_forecast": inc_realized + inc_planned,
         "monthly_expenses_realized": exp_realized,
         "monthly_expenses_forecast": exp_realized + exp_planned,
-        "goals_monthly_need": goals_monthly_need,
+        "goals_monthly_need": goals_monthly_need,  # Może być null dla przeszłości
         "goals_total_saved": goals_total_saved,
         "recent_transactions": tx_list,
         "period_start": str(start_date),

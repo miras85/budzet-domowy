@@ -54,9 +54,12 @@ export default {
 
         <div class="glass-panel p-4 rounded-2xl mb-4 flex justify-between items-center border-l-4 border-green-500">
             <div>
-                <div class="text-xs text-slate-400 uppercase font-bold mb-1">Cele oszczędnościowe</div>
-                <div class="text-sm text-slate-200">Wymagane w tym okresie:</div>
-                <div class="text-xl font-bold text-green-400">{{ formatMoney(dashboard.goals_monthly_need) }}</div>
+               <div class="text-sm text-slate-200">
+                   {{ dashboard.goals_monthly_need !== null ? 'Wymagane oszczędności w tym okresie:' : 'Dane historyczne niedostępne' }}
+               </div>
+               <div class="text-xl font-bold" :class="dashboard.goals_monthly_need !== null ? 'text-green-400' : 'text-slate-500'">
+                   {{ dashboard.goals_monthly_need !== null ? formatMoney(dashboard.goals_monthly_need) : '—' }}
+               </div>
             </div>
             <div class="text-right">
                 <div class="text-xs text-slate-500">Odłożono łącznie</div>
