@@ -1,5 +1,5 @@
 export default {
-    props: ['currentTab'],
+    props: ['currentTab', 'loanAlertsCount'],
     emits: ['update:currentTab', 'open-add'],
     template: `
     <div class="fixed bottom-0 left-0 right-0 glass-panel border-t border-slate-800 pb-safe safe-bottom z-50 h-16">
@@ -11,7 +11,19 @@ export default {
             <div class="fab-container"><button @click="$emit('open-add')" class="fab-btn group"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-8 h-8 group-active:rotate-90 transition-transform duration-200"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></button></div>
             <div class="nav-group">
                 <div @click="$emit('update:currentTab', 'goals')" :class="{active: currentTab === 'goals'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" /></svg><span class="nav-label">Cele</span></div>
-                <div @click="$emit('update:currentTab', 'payments')" :class="{active: currentTab === 'payments'}" class="nav-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span class="nav-label">Płatności</span></div>
+                <div @click="$emit('update:currentTab', 'payments')" :class="{active: currentTab === 'payments'}" class="nav-item relative">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 nav-icon">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span class="nav-label">Płatności</span>
+                    
+                    <!-- Badge (NOWY) -->
+                    <span 
+                        v-if="loanAlertsCount > 0" 
+                        class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-lg shadow-red-500/50 animate-pulse">
+                        {{ loanAlertsCount }}
+                    </span>
+                </div>
             </div>
         </div>
     </div>`

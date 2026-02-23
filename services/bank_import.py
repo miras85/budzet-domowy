@@ -8,6 +8,13 @@ import models, schemas
 import utils
 
 def normalize_amount(value: str) -> float:
+    """
+    Parsuje kwotę z różnych formatów ING:
+    - "-157 99" (spacja/tab między zł a gr)
+    - "-157,99" (przecinek)
+    - "-157.99" (kropka)
+    Zwraca float z ZACHOWANIEM ZNAKU (+ lub -)
+    """
     if not value:
         return 0.0
     
@@ -15,22 +22,36 @@ def normalize_amount(value: str) -> float:
     val = value.replace('PLN', '').replace('EUR', '').strip()
     val = val.replace('"', '').replace("'", "")
     
-    # 2. ING Format: "-120 00" (spacja/tab przed groszami)
+    # 2. Zachowaj znak minus (jeśli jest)
+    is_negative = val.startswith('-')
+    val = val.lstrip('-').strip()  # Usuń minus tymczasowo
+    
+    # 3. ING Format: "120 00" lub "120    00" (spacja/tab przed groszami)
     if ',' not in val and '.' not in val:
-        match_space_sep = re.match(r'^(-?\d+)[\s\t]+(\d{2})$', val)
+        # Sprawdź czy to format "XXX YY" (spacja/tab między zł a gr)
+        match_space_sep = re.match(r'^(\d+)[\s\t]+(\d{2})$', val)
         if match_space_sep:
-            return float(f"{match_space_sep.group(1)}.{match_space_sep.group(2)}")
-
-    # 3. Standardowy format
+            val = f"{match_space_sep.group(1)}.{match_space_sep.group(2)}"
+        # Jeśli nie pasuje - zostaw jak jest (może być cała liczba bez groszy)
+    
+    # 4. Standardowy format (usuń spacje, zamień przecinek na kropkę)
     val = val.replace(' ', '').replace('\xa0', '').replace('\t', '')
     val = val.replace(',', '.')
     
     try:
-        return float(val)
+        result = float(val)
+        # Przywróć znak minus jeśli był
+        return -result if is_negative else result
     except ValueError:
+        print(f"⚠️ WARNING: Nie można sparsować kwoty: '{value}'")
         return 0.0
 
 def auto_categorize(db: Session, description: str, amount: float) -> Tuple[Optional[int], str]:
+    """
+    Auto-kategoryzacja na podstawie historii.
+    TYP (income/expense) jest ZAWSZE określany przez ZNAK kwoty z CSV!
+    Szukamy tylko KATEGORII z podobnych transakcji.
+    """
     tx_type = "expense" if amount < 0 else "income"
     
     words = [w for w in re.split(r'\s+', description) if len(w) > 3]
@@ -46,7 +67,9 @@ def auto_categorize(db: Session, description: str, amount: float) -> Tuple[Optio
         .first()
 
     if similar_tx:
-        return similar_tx.category_id, similar_tx.type
+        # Zwróć TYLKO kategorię, NIE typ!
+        # Typ jest już poprawnie określony przez znak kwoty
+        return similar_tx.category_id, tx_type  # ← ZMIENIONE: tx_type (z CSV), nie similar_tx.type
     
     return None, tx_type
 

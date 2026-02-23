@@ -13,11 +13,12 @@ import SettingsView from './components/SettingsView.js?v=26';
 import AddTransactionView from './components/AddTransactionView.js';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
-import TheNavigation from './components/TheNavigation.js';
+import TheNavigation from './components/TheNavigation.js?v=2';
+import LoanAlertsModal from './components/LoanAlertsModal.js?v=1';  // NOWY
 
 const app = createApp({
     components: {
-        LoginView, DashboardView, AccountsView, GoalsView, PaymentsView, SettingsView, AddTransactionView, SearchView, ImportModal, TheNavigation
+        LoginView, DashboardView, AccountsView, GoalsView, PaymentsView, SettingsView, AddTransactionView, SearchView, ImportModal, TheNavigation, LoanAlertsModal
     },
     data() {
         return {
@@ -49,7 +50,21 @@ const app = createApp({
             
             // Dane
             dashboard: { total_balance: 0, disposable_balance: 0, forecast_ror: 0, savings_realized: 0, savings_rate: 0, total_debt: 0, monthly_income_realized: 0, monthly_income_forecast: 0, monthly_expenses_realized: 0, monthly_expenses_forecast: 0, goals_monthly_need: 0, goals_total_saved: 0, recent_transactions: [], period_start: '', period_end: '' },
-            accounts: [], categories: [], loansData: { loans: [], upcoming: [] }, goals: [], overrides: [], recurringList: [], duePayments: [],
+            accounts: [], categories: [],
+            loansData: { loans: []},
+            loanAlerts: {
+                overdue: [],
+                urgent: [],
+                upcoming: [],
+                total_overdue: 0,
+                total_urgent: 0,
+                total_upcoming: 0,
+                has_alerts: false
+            },
+            showLoanAlerts: false,
+            loanAlertsRecentlyDismissed: false,
+            
+            goals: [], overrides: [], recurringList: [], duePayments: [],
             security: { oldPassword: '', newPassword: '', newUsername: '', newUserPass: '' },
             
             // Nowe obiekty
@@ -78,6 +93,12 @@ const app = createApp({
             }
             return txs;
         },
+        loanAlertsCount() {
+                if (!this.loanAlerts) return 0;
+                return (this.loanAlerts.overdue?.length || 0) +
+                       (this.loanAlerts.urgent?.length || 0);
+            },
+        
         filteredCategories() {
             if (!this.categorySearch) return this.categories;
             const search = this.categorySearch.toLowerCase();
@@ -131,6 +152,110 @@ const app = createApp({
             this.toasts = this.toasts.filter(t => t.id !== id);
         },
         
+        async addLoanPaymentsToPlanned(payments) {
+            console.log('➕ addLoanPaymentsToPlanned wywołane dla:', payments);
+            console.log('📊 recent_transactions:', this.dashboard.recent_transactions);
+            let added = 0;
+            let skipped = 0;
+            
+            for (const pay of payments) {
+                try {
+                    // Sprawdź czy już nie ma w recent_transactions (dashboard)
+                    const exists = this.dashboard.recent_transactions?.find(tx =>
+                        tx.loan_id === pay.loan_id &&
+                        tx.status === 'planowana'
+                    );
+                    
+                    if (exists) {
+                        console.log(`Pominięto: ${pay.name} - już istnieje`);
+                        skipped++;
+                        continue;
+                    }
+                    
+                    const txData = {
+                        description: `Rata: ${pay.name}`,
+                        amount: pay.amount,
+                        type: 'expense',
+                        account_id: this.accounts[0]?.id || 1,
+                        date: pay.date,
+                        status: 'planowana',
+                        loan_id: pay.loan_id,
+                        category_name: 'Spłata zobowiązań'
+                    };
+                    
+                    await API.transactions.create(txData);
+                    added++;
+                } catch (e) {
+                    console.error('Błąd dodawania płatności:', e);
+                }
+            }
+            // Ustaw flagę "recently dismissed"
+            this.loanAlertsRecentlyDismissed = true;
+            
+            // KLUCZOWA ZMIANA: Zamknij modal PRZED refetch
+            this.showLoanAlerts = false;
+            
+            // Wyczyść alerty lokalnie
+               this.loanAlerts = {
+                   overdue: [],
+                   urgent: [],
+                   upcoming: [],
+                   total_overdue: 0,
+                   total_urgent: 0,
+                   total_upcoming: 0,
+                   has_alerts: false
+               };
+               
+               // Komunikat
+               if (added > 0 && skipped === 0) {
+                   this.notify('success', `Dodano ${added} płatności do planowanych`);
+               } else if (added > 0 && skipped > 0) {
+                   this.notify('success', `Dodano ${added}, pominięto ${skipped}`);
+               } else if (skipped > 0) {
+                   this.notify('info', `Płatności już są w planowanych`);
+               }
+               
+               // Refetch (modal się nie pojawi bo flaga "recently dismissed")
+               this.fetchData();
+               this.fetchLoans();
+               
+               // Zresetuj flagę po 2 sekundach
+               setTimeout(() => {
+                   this.loanAlertsRecentlyDismissed = false;
+               }, 2000);
+           },
+
+            
+        dismissLoanAlertsUntilTomorrow() {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            localStorage.setItem('loan_alerts_dismissed_until', tomorrow.toISOString().split('T')[0]);
+            
+            // Ustaw flagę
+            this.loanAlertsRecentlyDismissed = true;
+            
+            this.showLoanAlerts = false;
+            
+            // Wyczyść alerty lokalnie
+            this.loanAlerts = {
+                overdue: [],
+                urgent: [],
+                upcoming: [],
+                total_overdue: 0,
+                total_urgent: 0,
+                total_upcoming: 0,
+                has_alerts: false
+            };
+            
+            this.notify('info', 'Przypomnę jutro');
+            
+            // Zresetuj flagę po 2 sekundach
+            setTimeout(() => {
+                this.loanAlertsRecentlyDismissed = false;
+            }, 2000);
+        },
+        
+        
         async login(username, password) {
             try {
                 const data = await API.auth.login(username, password);
@@ -183,7 +308,42 @@ const app = createApp({
         refreshAllData() { this.fetchData(); this.fetchAccounts(); this.fetchLoans(); this.fetchGoals(); this.fetchCategories(); this.fetchOverrides(); this.fetchRecurring(); this.checkDuePayments(); },
         async fetchData() { if (!this.isLoggedIn) return; try { this.dashboard = await API.finance.getDashboard(this.periodOffset); if (this.accounts.length > 0 && !this.newTx.account_id) this.newTx.account_id = this.accounts[0].id; if (this.viewMode === 'chart') this.renderChart(); } catch (e) { console.error(e); } },
         async fetchAccounts() { if(this.isLoggedIn) this.accounts = await API.accounts.getAll(); },
-        async fetchLoans() { if(this.isLoggedIn) this.loansData = await API.loans.getAll(); },
+        async fetchLoans() {
+            console.log('🔄 fetchLoans() wywołane');
+            if (!this.isLoggedIn) return;
+            
+            const data = await API.loans.getAll();
+            this.loansData = { loans: data.loans };
+            
+            // Zapisz alerty
+            if (data.alerts) {
+                this.loanAlerts = data.alerts;
+                
+                // Sprawdź localStorage - czy dismissed?
+                const dismissedUntil = localStorage.getItem('loan_alerts_dismissed_until');
+                const today = new Date().toISOString().split('T')[0];
+                
+                // NIE POKAZUJ jeśli:
+                // 1. Właśnie zamknięto modal (recently dismissed)
+                // 2. LUB localStorage mówi że dismissed do jutra
+                if (this.loanAlertsRecentlyDismissed) {
+                    console.log('Modal nie pojawi się - właśnie zamknięty');
+                    return;
+                }
+                
+                if (dismissedUntil && dismissedUntil >= today) {
+                    console.log('Modal nie pojawi się - dismissed do jutra');
+                    return;
+                }
+                
+                // Pokaż tylko jeśli są PILNE (overdue lub urgent)
+                if (data.alerts.has_alerts &&
+                    (this.loanAlerts.overdue.length > 0 || this.loanAlerts.urgent.length > 0)) {
+                    this.showLoanAlerts = true;
+                }
+            }
+        },
+        
         async fetchGoals() { if(this.isLoggedIn) this.goals = await API.goals.getAll(); },
         async fetchCategories() { if(this.isLoggedIn) this.categories = await API.categories.getAll(); },
         async fetchOverrides() { if(this.isLoggedIn) this.overrides = await API.settings.getOverrides(); },

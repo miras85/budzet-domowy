@@ -74,7 +74,12 @@
             </div>
 
             <!-- NAVIGATION -->
-            <the-navigation v-if="isLoggedIn" v-model:current-tab="currentTab" @open-add="resetForm(); currentTab = 'add'"></the-navigation>
+            <the-navigation
+                v-if="isLoggedIn"
+                v-model:current-tab="currentTab"
+                :loan-alerts-count="loanAlertsCount"
+                @open-add="resetForm(); currentTab = 'add'">
+            </the-navigation>
 
             <!-- MODALS -->
             <search-view v-if="showSearch" :search-criteria="searchCriteria" :search-results="searchResults" :search-summary="searchSummary" :categories="categories" @close="closeSearch" @perform-search="performSearch" @clear-filters="clearSearchFilters" @apply-preset="applyDatePreset"></search-view>
@@ -87,8 +92,17 @@
             <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
             <div v-if="withdrawingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="withdrawingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Wypłać z: {{ withdrawingGoal.name }}</h3><div class="space-y-3"><div class="bg-slate-800 p-3 rounded-xl border border-slate-700 mb-2"><div class="text-xs text-slate-400 uppercase font-bold">Dostępne środki</div><div class="text-lg font-bold text-green-400">{{ formatMoney(withdrawingGoal.current_amount) }}</div></div><label class="text-xs text-slate-400 uppercase font-bold">Przelej na konto</label><select v-model="withdrawData.target_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option></select><input v-model="withdrawData.amount" type="number" placeholder="Kwota do wypłaty" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><div class="flex gap-2 mt-2"><button @click="withdrawData.amount = withdrawingGoal.current_amount" class="text-xs text-blue-400 font-bold py-2 px-3 bg-slate-800 rounded-lg border border-slate-700">Całość</button></div><button @click="submitWithdrawGoal" class="w-full bg-red-600 hover:bg-red-500 py-3 rounded-xl font-bold text-sm mt-2 text-white shadow-lg shadow-red-900/20">Potwierdź wypłatę</button></div></div></div>
             <div v-if="isLoggedIn && duePayments.length > 0" class="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"><div class="glass-panel w-full max-w-md rounded-2xl p-6 border border-blue-500/50"><h3 class="text-xl font-bold text-white mb-2">🔔 Płatności cykliczne</h3><p class="text-sm text-slate-400 mb-4">Poniższe opłaty są wymagalne w tym miesiącu. Czy chcesz je dodać?</p><div class="space-y-2 max-h-[50vh] overflow-y-auto mb-4"><div v-for="pay in duePayments" :key="pay.id" class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div><div class="font-bold text-white text-sm">{{ pay.name }}</div><div class="text-xs text-slate-400">{{ pay.category }}</div></div><div class="flex items-center gap-3"><div class="font-bold text-white">{{ formatMoney(pay.amount) }}</div><button @click="skipRecurring(pay)" class="bg-slate-700 text-slate-400 w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-slate-600 hover:text-white transition-colors" title="Pomiń w tym miesiącu">✕</button><button @click="processRecurring(pay)" class="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-green-500 transition-colors" title="Dodaj do planowanych">✓</button></div></div></div><button @click="duePayments = []" class="w-full py-3 text-slate-400 text-sm font-bold">Zamknij (Zrobię to później)</button></div></div>
+            <loan-alerts-modal
+                v-if="showLoanAlerts"
+                :alerts="loanAlerts"
+                :accounts="accounts"
+                @close="showLoanAlerts = false"
+                @add-to-planned="addLoanPaymentsToPlanned"
+                @dismiss-until-tomorrow="dismissLoanAlertsUntilTomorrow">
+            </loan-alerts-modal>
+            
         </div>
     </div>
-    <script type="module" src="/static/js/main.js?v=37"></script>
+    <script type="module" src="/static/js/main.js?v=43"></script>
 </body>
 </html>
