@@ -5,7 +5,7 @@ import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=51';
+import DashboardView from './components/DashboardView.js?v=53';
 import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js';
 import PaymentsView from './components/PaymentsView.js';
@@ -28,6 +28,7 @@ const app = createApp({
             viewMode: 'list',
             periodOffset: 0,
             transitionName: 'slide-next',
+            budgetRankingExpanded: false,  // NOWY - domyślnie zwinięty
             
             // Modale
             showAddLoan: false, showPaidLoans: false, showAddGoal: false, showAddRecurring: false, showSearch: false,

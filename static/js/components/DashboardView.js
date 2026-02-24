@@ -2,8 +2,8 @@ import * as Utils from '../utils.js';
 import { ICON_PATHS } from '../icons.js?v=51';
 
 export default {
-    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking'],
-    emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts'],
+    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking','budgetRankingExpanded'],
+    emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts','update:budgetRankingExpanded'],
     setup() {
         return {
             ...Utils,
@@ -62,14 +62,25 @@ export default {
                </div>
             </div>
             <div class="text-right">
-                <div class="text-xs text-slate-500">Odłożono łącznie</div>
+                <div class="text-xs text-slate-500">Odłożono łącznie na cele</div>
                 <div class="text-lg font-bold text-white">{{ formatMoney(dashboard.goals_total_saved) }}</div>
+                <div class="text-[9px] text-slate-500 mt-1 italic">ℹ️ Suma środków na wszystkich celach</div>
             </div>
         </div>
     
         <!-- RANKING BUDŻETÓW (NOWY) -->
                 <div class="glass-panel p-4 rounded-2xl mb-4">
-                    <h3 class="text-xs text-slate-400 uppercase font-bold mb-3 tracking-wider">🎯 Status Budżetów</h3>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xs text-slate-400 uppercase font-bold tracking-wider">🎯 Status Budżetów</h3>
+                        <button 
+                            @click="$emit('update:budgetRankingExpanded', !budgetRankingExpanded)"
+                            class="text-slate-400 hover:text-white text-xl transition-colors">
+                            {{ budgetRankingExpanded ? '▲' : '▼' }}
+                        </button>
+                    </div>
+    
+                    <!-- Zawartość rankingu (zwijalna) -->
+                    <div v-show="budgetRankingExpanded">
                     
                     <!-- Przekroczone (czerwone) -->
                     <div v-if="budgetRanking.exceeded.length > 0" class="mb-3">
@@ -118,6 +129,7 @@ export default {
                          class="text-center py-4">
                         <div class="text-slate-500 text-xs">Ustaw limity w kategoriach, aby śledzić budżety</div>
                     </div>
+                    </div>  <!-- Koniec v-show -->
                 </div>
     
     
@@ -210,6 +222,7 @@ export default {
                     <div class="flex justify-between text-slate-400"><span>Nadwyżka (Przych. - Wyd.):</span><span>{{ formatMoney(dashboard.monthly_income_realized - dashboard.monthly_expenses_realized - dashboard.savings_realized) }}</span></div>
                     <div class="flex justify-between text-white font-bold"><span>Transfery na oszczędności:</span><span>{{ formatMoney(dashboard.savings_realized) }}</span></div>
                 </div>
+                    <div class="text-[9px] text-slate-500 mt-1 italic">ℹ️ Przelewy na oszczędności w tym okresie</div>
             </div>
             <div class="glass-panel p-4 rounded-2xl">
                 <h3 class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Trend Finansowy</h3>
