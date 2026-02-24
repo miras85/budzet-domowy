@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from datetime import date
 import database, models, schemas, utils
+from sqlalchemy import func
 
 router = APIRouter(prefix="/api/recurring", tags=["Recurring"])
 
@@ -11,9 +12,15 @@ def get_recurring(db: Session = Depends(database.get_db), current_user: models.U
 
 @router.post("")
 def create_recurring(rec: schemas.RecurringCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    cat = db.query(models.Category).filter(models.Category.name == rec.category_name).first()
+    cat = db.query(models.Category).filter(
+    func.lower(models.Category.name) == rec.category_name.lower().strip()
+    ).first()
     if not cat:
-        cat = models.Category(name=rec.category_name)
+        cat = models.Category(
+        name=rec.category_name,
+        icon_name='tag',
+        color='#94a3b8'
+        )
         db.add(cat); db.commit()
     
     new_rec = models.RecurringTransaction(

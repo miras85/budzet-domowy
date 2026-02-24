@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from typing import Optional
 from datetime import date
 import models, schemas, utils
+from sqlalchemy import func
 
 def create_transaction(db: Session, tx: schemas.TransactionCreate):
     """Tworzy nową transakcję z atomową aktualizacją sald"""
@@ -13,17 +14,26 @@ def create_transaction(db: Session, tx: schemas.TransactionCreate):
         # Obsługa kategorii dla pożyczek
         if tx.loan_id:
             target_cat = "Spłata zobowiązań"
-            cat = db.query(models.Category).filter(models.Category.name == target_cat).first()
+            cat = db.query(models.Category).filter(func.lower(models.Category.name) == target_cat.lower().strip()).first()
             if not cat:
-                cat = models.Category(name=target_cat)
+                cat = models.Category(
+                    name=target_cat,
+                    icon_name='tag',  # Default
+                    color='#94a3b8'   # Default
+                )
                 db.add(cat)
                 db.flush()  # FLUSH zamiast COMMIT
             cat_id = cat.id
         # Obsługa zwykłych kategorii
         elif tx.type != 'transfer' and tx.category_name:
-            cat = db.query(models.Category).filter(models.Category.name == tx.category_name).first()
+            cat = db.query(models.Category).filter(func.lower(models.Category.name) == tx.category_name.lower().strip()
+            ).first()
             if not cat:
-                cat = models.Category(name=tx.category_name)
+                cat = models.Category(
+                    name=tx_data.category_name,
+                    icon_name='tag',
+                    color='#94a3b8'
+                )
                 db.add(cat)
                 db.flush()  # FLUSH zamiast COMMIT
             cat_id = cat.id
@@ -74,16 +84,28 @@ def update_transaction(db: Session, tx_id: int, tx_data: schemas.TransactionCrea
         cat_id = None
         if tx_data.loan_id:
             target_cat = "Spłata zobowiązań"
-            cat = db.query(models.Category).filter(models.Category.name == target_cat).first()
+            cat = db.query(models.Category).filter(
+            func.lower(models.Category.name) == tx_data.category_name.lower().strip()
+            ).first()
             if not cat:
-                cat = models.Category(name=target_cat)
+                cat = models.Category(
+                    name=target_cat,
+                    icon_name='tag',  # Default
+                    color='#94a3b8'   # Default
+                )
                 db.add(cat)
                 db.flush()  # FLUSH zamiast COMMIT
             cat_id = cat.id
         elif tx_data.type != 'transfer' and tx_data.category_name:
-            cat = db.query(models.Category).filter(models.Category.name == tx_data.category_name).first()
+            cat = db.query(models.Category).filter(
+            func.lower(models.Category.name) == tx_data.category_name.lower().strip()
+            ).first()
             if not cat:
-                cat = models.Category(name=tx_data.category_name)
+                cat = models.Category(
+                    name=tx_data.category_name,
+                    icon_name='tag',
+                    color='#94a3b8'
+                )
                 db.add(cat)
                 db.flush()  # FLUSH zamiast COMMIT
             cat_id = cat.id

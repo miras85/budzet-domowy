@@ -1,15 +1,15 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js';
+import * as API from './api.js?v=51';
 import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=32';
+import DashboardView from './components/DashboardView.js?v=51';
 import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js';
 import PaymentsView from './components/PaymentsView.js';
-import SettingsView from './components/SettingsView.js?v=26';
+import SettingsView from './components/SettingsView.js?v=52';
 import AddTransactionView from './components/AddTransactionView.js';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
@@ -31,7 +31,7 @@ const app = createApp({
             
             // Modale
             showAddLoan: false, showPaidLoans: false, showAddGoal: false, showAddRecurring: false, showSearch: false,
-            editingTxId: null, editingLoan: null, fundingGoal: null, transferingGoal: null, selectedCategory: null, withdrawingGoal: null,
+            editingTxId: null, editingLoan: null, fundingGoal: null, transferingGoal: null, selectedCategory: null, withdrawingGoal: null, categoryTrend: null, categoryModalTab: 'overview',
             
             // Formularze
             withdrawData: { target_account_id: null, amount: '' },
@@ -81,6 +81,44 @@ const app = createApp({
         filteredLoans() { if (!this.loansData.loans) return []; return this.loansData.loans.filter(l => this.showPaidLoans || l.remaining > 0); },
         activeLoans() { if (!this.loansData.loans) return []; return this.loansData.loans.filter(l => l.remaining > 0); },
         savingsAccounts() { return this.accounts.filter(a => a.is_savings); },
+        budgetRanking() {
+                const ranking = {
+                    ok: [],        // 0-80%
+                    warning: [],   // 80-100%
+                    exceeded: []   // >100%
+                };
+                
+                this.groupedCategories.forEach(cat => {
+                    if (cat.limit <= 0) return;  // Pomiń kategorie bez limitu
+                    if (cat.total >= 0) return;  // Pomiń przychody
+                    
+                    const spent = Math.abs(cat.total);
+                    const percent = (spent / cat.limit) * 100;
+                    
+                    const item = {
+                        name: cat.name,
+                        spent: spent,
+                        limit: cat.limit,
+                        percent: percent.toFixed(0),
+                        remaining: cat.limit - spent
+                    };
+                    
+                    if (percent > 100) {
+                        ranking.exceeded.push(item);
+                    } else if (percent >= 80) {
+                        ranking.warning.push(item);
+                    } else {
+                        ranking.ok.push(item);
+                    }
+                });
+                
+                // Sortuj exceeded po największym przekroczeniu
+                ranking.exceeded.sort((a, b) => b.percent - a.percent);
+                
+                return ranking;
+            },
+        
+        
         filteredTransactions() {
             if (!this.dashboard.recent_transactions) return [];
             let txs = this.dashboard.recent_transactions;
@@ -385,7 +423,17 @@ const app = createApp({
             this.notify('success', 'Dodano kategorię');
         },
         async deleteCategory(id) { if(!confirm("Usunąć?")) return; await API.categories.delete(id); this.fetchCategories(); this.notify('info', 'Usunięto'); },
-        async updateCategoryLimit(cat) { if (!cat.id) return; await API.categories.update(cat.id, { name: cat.name, monthly_limit: parseFloat(cat.limit) }); this.fetchCategories(); this.notify('success', "Zapisano"); },
+        async updateCategoryLimit(cat) {
+            if (!cat.id) return;
+            await API.categories.update(cat.id, {
+                name: cat.name,
+                monthly_limit: parseFloat(cat.limit || 0),
+                icon: cat.icon_name || 'tag',  // DODANE
+                color: cat.color || '#94a3b8'  // DODANE
+            });
+            this.fetchCategories();
+            this.notify('success', "Zapisano");
+        },
         async updateCategory(cat) {
             if (!cat.id) return;
             await API.categories.update(cat.id, {
@@ -490,7 +538,18 @@ const app = createApp({
         handleTouchEnd(e) { this.touchEndX = e.changedTouches[0].screenX; this.handleSwipe(); },
         handleSwipe() { if (this.currentTab !== 'dashboard') return; const diff = this.touchEndX - this.touchStartX; if (diff > 50) this.changePeriod(-1); if (diff < -50) this.changePeriod(1); },
         
-        openCategoryDetails(cat) { this.selectedCategory = cat; },
+        async openCategoryDetails(cat) {
+            this.selectedCategory = cat;
+            this.categoryModalTab = 'overview';  // Zawsze zaczynaj od overview
+            
+            // Pobierz trend dla tej kategorii
+            try {
+                this.categoryTrend = await API.categories.getTrend(cat.id);
+            } catch (e) {
+                console.error('Błąd pobierania trendu:', e);
+                this.categoryTrend = null;
+            }
+        },
         editTxFromModal(tx) { this.selectedCategory = null; this.editTx(tx); },
         async realizeTxFromModal(tx) { await this.realizeTx(tx); this.selectedCategory = null; },
         copyTx(tx) { this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: new Date().toISOString().split('T')[0] }; this.isPlanned = false; this.editingTxId = null; this.currentTab = 'add'; this.selectedCategory = null; window.scrollTo(0,0); this.notify('info', 'Skopiowano'); },

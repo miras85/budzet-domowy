@@ -1,8 +1,8 @@
 import * as Utils from '../utils.js';
-import { ICON_PATHS } from '../icons.js?v=26';
+import { ICON_PATHS } from '../icons.js?v=51';
 
 export default {
-    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment'],
+    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking'],
     emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts'],
     setup() {
         return {
@@ -66,6 +66,61 @@ export default {
                 <div class="text-lg font-bold text-white">{{ formatMoney(dashboard.goals_total_saved) }}</div>
             </div>
         </div>
+    
+        <!-- RANKING BUDŻETÓW (NOWY) -->
+                <div class="glass-panel p-4 rounded-2xl mb-4">
+                    <h3 class="text-xs text-slate-400 uppercase font-bold mb-3 tracking-wider">🎯 Status Budżetów</h3>
+                    
+                    <!-- Przekroczone (czerwone) -->
+                    <div v-if="budgetRanking.exceeded.length > 0" class="mb-3">
+                        <div class="text-[10px] text-red-400 font-bold uppercase mb-2">🔴 Przekroczone</div>
+                        <div class="space-y-2">
+                            <div v-for="cat in budgetRanking.exceeded" :key="cat.name" 
+                                 @click="$emit('open-category', groupedCategories.find(c => c.name === cat.name))"
+                                 class="bg-red-900/20 border border-red-500/30 p-2 rounded-lg flex justify-between items-center cursor-pointer hover:bg-red-900/30 transition-colors">
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-bold text-white truncate">{{ cat.name }}</div>
+                                    <div class="text-xs text-red-300">{{ cat.percent }}% ({{ formatMoney(cat.spent) }})</div>
+                                </div>
+                                <div class="text-right shrink-0">
+                                    <div class="text-xs font-bold text-red-400">+{{ formatMoney(Math.abs(cat.remaining)) }}</div>
+                                    <div class="text-[9px] text-red-300">ponad limit</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Bliskie limitu (żółte) -->
+                    <div v-if="budgetRanking.warning.length > 0" class="mb-3">
+                        <div class="text-[10px] text-yellow-400 font-bold uppercase mb-2">⚠️ Bliskie limitu (80-100%)</div>
+                        <div class="space-y-2">
+                            <div v-for="cat in budgetRanking.warning" :key="cat.name"
+                                 @click="$emit('open-category', groupedCategories.find(c => c.name === cat.name))"
+                                 class="bg-yellow-900/20 border border-yellow-500/30 p-2 rounded-lg flex justify-between items-center cursor-pointer hover:bg-yellow-900/30 transition-colors">
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-bold text-white truncate">{{ cat.name }}</div>
+                                    <div class="text-xs text-yellow-300">{{ cat.percent }}% ({{ formatMoney(cat.spent) }})</div>
+                                </div>
+                                <div class="text-xs font-bold text-yellow-400 shrink-0">{{ formatMoney(cat.remaining) }} zł</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- W normie (zielone) - pokazuj tylko liczbę -->
+                    <div v-if="budgetRanking.ok.length > 0" class="bg-green-900/10 border border-green-500/20 p-2 rounded-lg">
+                        <div class="text-xs text-green-400">
+                            ✅ W normie: <span class="font-bold">{{ budgetRanking.ok.length }} kategorii</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Brak budżetów -->
+                    <div v-if="budgetRanking.ok.length === 0 && budgetRanking.warning.length === 0 && budgetRanking.exceeded.length === 0" 
+                         class="text-center py-4">
+                        <div class="text-slate-500 text-xs">Ustaw limity w kategoriach, aby śledzić budżety</div>
+                    </div>
+                </div>
+    
+    
 
         <div class="flex flex-col gap-3 mb-4">
             <div class="bg-slate-800 p-1 rounded-xl grid grid-cols-3 gap-1">

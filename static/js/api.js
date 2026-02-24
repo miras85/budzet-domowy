@@ -114,6 +114,9 @@ export const categories = {
                 body: JSON.stringify(data) // data to { name, icon, color }
             });
         },
+    async getTrend(id) {
+            return (await authFetch(`/api/categories/${id}/trend`)).json();
+        },
     async update(id, data) { return authFetch(`/api/categories/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
     async delete(id) { return authFetch(`/api/categories/${id}`, { method: 'DELETE' }); }
 };

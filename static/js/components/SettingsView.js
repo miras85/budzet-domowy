@@ -1,4 +1,4 @@
-import { ICON_PATHS, COLORS } from '../icons.js?v=25';
+import { ICON_PATHS, COLORS } from '../icons.js?v=51';
 
 export default {
     props: ['categories', 'overrides', 'newCategoryName', 'newOverride', 'security'],
@@ -15,12 +15,15 @@ export default {
         handleSubmit() {
             if(!this.formCat.name) return;
             if (this.formCat.id) {
+                // Znajdź oryginalną kategorię żeby zachować limit
+                const originalCat = this.categories.find(c => c.id === this.formCat.id);
+                
                 this.$emit('update-category', {
                     id: this.formCat.id,
                     name: this.formCat.name,
                     icon_name: this.formCat.icon,
                     color: this.formCat.color,
-                    limit: 0
+                    limit: originalCat ? originalCat.monthly_limit : 0  // ZACHOWAJ istniejący limit!
                 });
             } else {
                 this.$emit('add-category', {

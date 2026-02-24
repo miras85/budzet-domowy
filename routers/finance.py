@@ -285,3 +285,61 @@ def get_accounts(db: Session = Depends(database.get_db), current_user: models.Us
 def delete_account(account_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Transaction).filter(models.Transaction.account_id == account_id).delete(); db.query(models.Account).filter(models.Account.id == account_id).delete(); db.commit(); return {"status": "deleted"}
 @router.post("/accounts")
 def create_account(acc: schemas.AccountUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db_acc = models.Account(name=acc.name, type=acc.type, balance=acc.balance, is_savings=acc.is_savings); db.add(db_acc); db.commit(); return {"status": "ok"}
+
+# --- TREND KATEGORII ---
+@router.get("/categories/{cat_id}/trend")
+def get_category_trend(cat_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    """Zwraca trend wydatków dla kategorii (ostatnie 6 miesięcy)"""
+    
+    category = db.query(models.Category).filter(models.Category.id == cat_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Kategoria nie istnieje")
+    
+    data = []
+    total_sum = 0.0
+    months_with_data = 0
+    
+    # Ostatnie 6 okresów rozliczeniowych
+    for i in range(5, -1, -1):
+        offset = -i  # -5, -4, -3, -2, -1, 0
+        start, end = utils.get_billing_period(db, offset)
+        
+        # Suma wydatków w tej kategorii w tym okresie
+        raw_sum = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.category_id == cat_id,
+            models.Transaction.type == 'expense',
+            models.Transaction.status == 'zrealizowana',
+            models.Transaction.date >= start,
+            models.Transaction.date <= end
+        ).scalar()
+        
+        amount = float(raw_sum) if raw_sum is not None else 0.0
+        
+        if amount > 0:
+            total_sum += amount
+            months_with_data += 1
+        
+        # Label miesiąca
+        months = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"]
+        label = f"{months[start.month - 1]}"
+        
+        data.append({
+            "label": label,
+            "amount": amount,
+            "period_start": str(start),
+            "period_end": str(end)
+        })
+    
+    # Oblicz średnią (tylko miesiące z danymi)
+    average = total_sum / months_with_data if months_with_data > 0 else 0.0
+    
+    # Sugestia limitu (średnia + 10% bufor)
+    suggested_limit = average * 1.1 if average > 0 else 0.0
+    
+    return {
+        "category_name": category.name,
+        "trend": data,
+        "average": average,
+        "suggested_limit": suggested_limit,
+        "current_limit": float(category.monthly_limit)
+    }
