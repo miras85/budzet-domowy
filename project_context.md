@@ -770,3 +770,33 @@ mysql -u domowybudzet -p domowy_budzet < ~/BudzetBackups/backup_YYYYMMDD.sql
 Cache problemy (stara wersja UI):
 # Zmień wersje w index.html:
 <script src="/static/js/main.js?v=51">  # Zwiększ numer
+
+---
+
+## 2026-02-25 - Oracle Cloud Migration COMPLETED ✅
+
+**Production Environment:**
+- Platform: Oracle Cloud (Always Free)
+- Region: Germany Central (Frankfurt)
+- VM: Ubuntu 22.04 ARM (1 OCPU, 6GB RAM, 45GB disk)
+- MySQL: 8.0 (localhost, user: domowybudzet)
+- Backend: FastAPI + systemd (auto-restart)
+- Web server: Nginx (reverse proxy)
+- Tunnel: Cloudflare (systemd service)
+- Migrations: Alembic (configured, stamped)
+- VS Code: Remote SSH ready
+
+**Development Environment:**
+- Mac: Kod lokalny (~/HomeBudget)
+- XAMPP MySQL: Opcjonalnie dla testów
+- VS Code Remote: Edycja bezpośrednio na Oracle
+
+**Status:** 
+- Production: ✅ LIVE 24/7 (https://budzet-domowy.pl/)
+- Uptime: 99.95% (Oracle SLA)
+- Cost: $0/month (Always Free)
+- Backup: Automatyczny (cron 3:00 AM, 30-day retention)
+
+**Czas migracji:** 5 godzin
+**Downtime:** ~10 minut (przełączenie tunelu)
+**Utrata danych:** 0 (pełna weryfikacja)
