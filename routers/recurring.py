@@ -38,22 +38,43 @@ def delete_recurring(id: int, db: Session = Depends(database.get_db), current_us
 
 @router.get("/check")
 def check_due_payments(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    """Sprawdza, które płatności powinny być wykonane w tym miesiącu, a jeszcze nie były."""
-    today = date.today()
-    start_of_month = date(today.year, today.month, 1)
+    """Sprawdza płatności wymagalne W OBECNYM CYKLU ROZLICZENIOWYM."""
+    import calendar
     
-    all_recs = db.query(models.RecurringTransaction).filter(models.RecurringTransaction.is_active == True).all()
+    today = date.today()
+    start_date, end_date = utils.get_billing_period(db, 0)
+    
+    all_recs = db.query(models.RecurringTransaction).filter(
+        models.RecurringTransaction.is_active == True
+    ).all()
+    
     due = []
     
     for r in all_recs:
-        if not r.last_run_date or r.last_run_date < start_of_month:
-            due.append({
-                "id": r.id,
-                "name": r.name,
-                "amount": float(r.amount),
-                "category": r.category.name if r.category else "Inne",
-                "account_id": r.account_id
-            })
+        try:
+            payment_date = date(today.year, today.month, r.day_of_month)
+        except ValueError:
+            last_day = calendar.monthrange(today.year, today.month)[1]
+            payment_date = date(today.year, today.month, last_day)
+        
+        if not (start_date <= payment_date <= end_date):
+            continue
+        
+        if payment_date > today:
+            continue
+        
+        if r.last_run_date and r.last_run_date >= start_date:
+            continue
+        
+        due.append({
+            "id": r.id,
+            "name": r.name,
+            "amount": float(r.amount),
+            "category": r.category.name if r.category else "Inne",
+            "account_id": r.account_id,
+            "payment_date": str(payment_date)
+        })
+    
     return due
 
 @router.post("/{id}/process")
