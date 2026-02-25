@@ -38,7 +38,7 @@ def delete_recurring(id: int, db: Session = Depends(database.get_db), current_us
 
 @router.get("/check")
 def check_due_payments(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    """Sprawdza płatności wymagalne W OBECNYM CYKLU ROZLICZENIOWYM."""
+    """Sprawdza płatności wymagalne w OBECNYM CYKLU ROZLICZENIOWYM."""
     import calendar
     
     today = date.today()
@@ -51,18 +51,45 @@ def check_due_payments(db: Session = Depends(database.get_db), current_user: mod
     due = []
     
     for r in all_recs:
-        try:
-            payment_date = date(today.year, today.month, r.day_of_month)
-        except ValueError:
-            last_day = calendar.monthrange(today.year, today.month)[1]
-            payment_date = date(today.year, today.month, last_day)
+        # Ustal datę płatności dla TEGO CYKLU:
+        # Jeśli day < 25 (przed wypłatą) - płatność w kolejnym miesiącu kalendarzowym od start_date
+        # Jeśli day >= 25 (po wypłacie) - płatność w tym samym miesiącu co start_date
         
+        payday = 25  # Dzień wypłaty (możesz pobrać z utils jeśli dynamiczny)
+        
+        if r.day_of_month < payday:
+            # Płatność PRZED wypłatą = kolejny miesiąc kalendarzowy od początku cyklu
+            base_month = start_date.month + 1
+            base_year = start_date.year
+            if base_month > 12:
+                base_month = 1
+                base_year += 1
+        else:
+            # Płatność PO wypłacie = ten sam miesiąc co początek cyklu
+            base_month = start_date.month
+            base_year = start_date.year
+        
+        try:
+            payment_date = date(base_year, base_month, r.day_of_month)
+        except ValueError:
+            # Dzień nie istnieje (np. 31 lutego)
+            last_day = calendar.monthrange(base_year, base_month)[1]
+            payment_date = date(base_year, base_month, last_day)
+        
+        # Sprawdź czy payment jest W CYKLU:
         if not (start_date <= payment_date <= end_date):
             continue
         
-        if payment_date > today:
-            continue
+        # Sprawdź czy płatność jest w przedziale: dziś do +7 dni:
+        days_until = (payment_date - today).days
+
+        if days_until > 7:
+            continue  # Za daleko (>7 dni) - nie pokazuj jeszcze
+            
+        if days_until < 0:
+            continue  # Przeterminowana (minęła) - nie pokazuj już
         
+        # Sprawdź czy była już wykonana W TYM CYKLU:
         if r.last_run_date and r.last_run_date >= start_date:
             continue
         
@@ -72,7 +99,8 @@ def check_due_payments(db: Session = Depends(database.get_db), current_user: mod
             "amount": float(r.amount),
             "category": r.category.name if r.category else "Inne",
             "account_id": r.account_id,
-            "payment_date": str(payment_date)
+            "payment_date": str(payment_date),
+            "days_until": days_until  # NOWE
         })
     
     return due
