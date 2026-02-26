@@ -10,7 +10,7 @@ import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js';
 import PaymentsView from './components/PaymentsView.js';
 import SettingsView from './components/SettingsView.js?v=52';
-import AddTransactionView from './components/AddTransactionView.js';
+import AddTransactionView from './components/AddTransactionView.js?V=5';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
 import TheNavigation from './components/TheNavigation.js?v=2';
@@ -555,7 +555,37 @@ const app = createApp({
         async realizeTxFromModal(tx) { await this.realizeTx(tx); this.selectedCategory = null; },
         copyTx(tx) { this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: new Date().toISOString().split('T')[0] }; this.isPlanned = false; this.editingTxId = null; this.currentTab = 'add'; this.selectedCategory = null; window.scrollTo(0,0); this.notify('info', 'Skopiowano'); },
         handleLoanChange() { if (this.newTx.loan_id) this.newTx.category_name = 'Spłata zobowiązań'; else this.newTx.category_name = ''; },
-        detectCategory() { if(this.editingTxId) return; const desc = this.newTx.description.toLowerCase(); if (desc.length < 3) return; const match = this.dashboard.recent_transactions.find(tx => tx.desc.toLowerCase().includes(desc) && tx.category !== '-' && tx.category !== 'Transfer'); if (match) this.newTx.category_name = match.category; },
+        detectCategory() {
+            if(this.editingTxId) return;
+            
+            const desc = this.newTx.description.toLowerCase();
+            console.log('🔍 detectCategory:', desc);
+            
+            if (desc.length < 3) return;
+            
+            // Szukaj w CAŁEJ BAZIE (nie tylko recent):
+            API.transactions.search(`q=${desc}&type=${this.newTx.type}`)
+                .then(data => {
+                    if (data.transactions && data.transactions.length > 0) {
+                        // Pierwsza znaleziona z kategorią:
+                        const match = data.transactions.find(tx =>
+                            tx.category &&
+                            tx.category !== '-' &&
+                            tx.category !== 'Transfer'
+                        );
+                        
+                        if (match) {
+                            console.log('✅ AUTO-KATEGORIA:', match.category);
+                            this.newTx.category_name = match.category;
+                        } else {
+                            console.log('❌ Brak kategorii w wynikach');
+                        }
+                    } else {
+                        console.log('❌ Brak wyników dla:', desc);
+                    }
+                })
+                .catch(e => console.error('Błąd search:', e));
+        },
         editTx(tx) { this.editingTxId = tx.id; this.isPlanned = (tx.status === 'planowana'); this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, category_name: tx.category_name, loan_id: tx.loan_id, date: tx.date.split('T')[0], target_account_id: tx.target_account_id }; this.currentTab = 'add'; },
         cancelEdit() { this.resetForm(); this.currentTab = 'dashboard'; },
         resetForm() { this.editingTxId = null; this.isPlanned = false; this.showCategorySelector = false; this.newTx = { description: '', amount: '', type: 'expense', account_id: this.accounts[0]?.id, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] }; },
