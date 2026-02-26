@@ -1,6 +1,6 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js?v=51';
+import * as API from './api.js?v=53';
 import * as Charts from './charts.js';
 
 // Import Komponentów
@@ -8,7 +8,7 @@ import LoginView from './components/LoginView.js';
 import DashboardView from './components/DashboardView.js?v=53';
 import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js';
-import PaymentsView from './components/PaymentsView.js';
+import PaymentsView from './components/PaymentsView.js?v=3';
 import SettingsView from './components/SettingsView.js?v=52';
 import AddTransactionView from './components/AddTransactionView.js?V=5';
 import SearchView from './components/SearchView.js';
@@ -29,6 +29,7 @@ const app = createApp({
             periodOffset: 0,
             transitionName: 'slide-next',
             budgetRankingExpanded: false,  // NOWY - domyślnie zwinięty
+            editingRecurring: null,
             
             // Modale
             showAddLoan: false, showPaidLoans: false, showAddGoal: false, showAddRecurring: false, showSearch: false,
@@ -411,10 +412,45 @@ const app = createApp({
         async submitFundGoal() { await API.goals.fund(this.fundingGoal.id, this.fundData); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); this.notify('success', 'Zasilono'); },
         async submitWithdrawGoal() { if (!this.withdrawData.amount || !this.withdrawData.target_account_id) return this.notify('error', "Wypełnij pola"); if (parseFloat(this.withdrawData.amount) > parseFloat(this.withdrawingGoal.current_amount)) return this.notify('error', "Brak środków!"); await API.goals.withdraw(this.withdrawingGoal.id, this.withdrawData); this.withdrawingGoal = null; this.fetchGoals(); this.fetchAccounts(); this.notify('success', 'Wypłacono'); },
         async submitTransferGoal() { await API.goals.transfer(this.transferingGoal.id, this.transferData); this.transferingGoal = null; this.fetchGoals(); this.notify('success', 'Przeniesiono'); },
+        editRecurring(rec) {
+            console.log('🔧 editRecurring wywołane:', rec);
+            
+            // Ustaw POLA reactive object (nie nadpisuj całego obiektu):
+            this.newRecurring.name = rec.name;
+            this.newRecurring.amount = rec.amount;
+            this.newRecurring.day_of_month = rec.day_of_month;
+            this.newRecurring.category_name = rec.category ? rec.category.name : '';
+            this.newRecurring.account_id = rec.account_id;
+            
+            console.log('✅ newRecurring po ustawieniu:', this.newRecurring);
+            
+            // Zapisz ID (flaga że to edycja, nie nowe):
+            this.editingRecurring = { id: rec.id };
+            
+            // Otwórz formularz:
+            this.showAddRecurring = true;
+        },
 
-        async submitRecurring() { await API.recurring.create(this.newRecurring); this.showAddRecurring = false; this.fetchRecurring(); this.notify('success', 'Dodano'); },
+        async submitRecurring() {
+            if (this.editingRecurring && this.editingRecurring.id) {
+                // UPDATE
+                await API.recurring.update(this.editingRecurring.id, this.newRecurring);
+                this.notify('success', 'Zaktualizowano');
+            } else {
+                // CREATE
+                await API.recurring.create(this.newRecurring);
+                this.notify('success', 'Dodano');
+            }
+            
+            this.editingRecurring = null;
+            this.showAddRecurring = false;
+            this.fetchRecurring();
+        },
         async deleteRecurring(id) { if(!confirm("Usunąć?")) return; await API.recurring.delete(id); this.fetchRecurring(); this.notify('info', 'Usunięto'); },
-        async processRecurring(pay) { await API.recurring.process(pay.id, new Date().toISOString().split('T')[0]); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.fetchData(); this.fetchAccounts(); this.notify('success', 'Zaksięgowano'); },
+        async processRecurring(pay) {
+            // Użyj daty z payment_date (obliczonej przez backend):
+            const paymentDate = pay.payment_date || new Date().toISOString().split('T')[0];
+            await API.recurring.process(pay.id, paymentDate); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.fetchData(); this.fetchAccounts(); this.notify('success', 'Zaksięgowano'); },
         async skipRecurring(pay) { if(!confirm("Pominąć?")) return; await API.recurring.skip(pay.id); this.duePayments = this.duePayments.filter(p => p.id !== pay.id); this.notify('info', 'Pominięto'); },
 
         async addCategory(catData) {

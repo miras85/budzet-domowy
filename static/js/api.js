@@ -101,7 +101,15 @@ export const recurring = {
     async create(data) { return authFetch('/api/recurring', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
     async delete(id) { return authFetch(`/api/recurring/${id}`, { method: 'DELETE' }); },
     async process(id, dateStr) { return authFetch(`/api/recurring/${id}/process`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: dateStr }) }); },
-    async skip(id) { return authFetch(`/api/recurring/${id}/skip`, { method: 'POST' }); }
+    async skip(id) { return authFetch(`/api/recurring/${id}/skip`, { method: 'POST' }); },
+    async update(id, data) {
+            return authFetch(`/api/recurring/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        }
+
 };
 
 export const categories = {

@@ -29,6 +29,33 @@ def create_recurring(rec: schemas.RecurringCreate, db: Session = Depends(databas
     )
     db.add(new_rec); db.commit()
     return {"status": "created"}
+    
+@router.put("/{id}")
+def update_recurring(id: int, rec: schemas.RecurringCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    db_rec = db.query(models.RecurringTransaction).filter(models.RecurringTransaction.id == id).first()
+    if not db_rec:
+        raise HTTPException(status_code=404)
+    
+    # Znajdź/stwórz kategorię:
+    cat = db.query(models.Category).filter(
+        func.lower(models.Category.name) == rec.category_name.lower().strip()
+    ).first()
+    
+    if not cat:
+        cat = models.Category(name=rec.category_name, icon_name='tag', color='#94a3b8')
+        db.add(cat)
+        db.flush()
+    
+    # Update pól:
+    db_rec.name = rec.name
+    db_rec.amount = rec.amount
+    db_rec.day_of_month = rec.day_of_month
+    db_rec.category_id = cat.id
+    db_rec.account_id = rec.account_id
+    
+    db.commit()
+    return {"status": "updated"}
+
 
 @router.delete("/{id}")
 def delete_recurring(id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):

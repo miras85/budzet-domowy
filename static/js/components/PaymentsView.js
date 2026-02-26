@@ -1,7 +1,7 @@
 import * as Utils from '../utils.js';
 export default {
     props: ['filteredLoans', 'showPaidLoans', 'showAddLoan', 'newLoan', 'showAddRecurring', 'newRecurring', 'recurringList', 'accounts', 'filteredCategories', 'categorySearch'],
-    emits: ['update:showPaidLoans', 'update:showAddLoan', 'update:showAddRecurring', 'update:categorySearch', 'submit-loan', 'edit-loan', 'submit-recurring', 'delete-recurring'],
+    emits: ['update:showPaidLoans', 'update:showAddLoan', 'update:showAddRecurring', 'update:categorySearch', 'submit-loan', 'edit-loan', 'submit-recurring', 'delete-recurring','edit-recurring'],
     data() { return { showCategorySelector: false } },
     setup() { return { ...Utils }; },
     template: `
@@ -22,7 +22,19 @@ export default {
                 <select v-model="newRecurring.account_id" class="input-dark w-full p-3 rounded-xl text-sm"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }}</option></select>
                 <button @click="$emit('submit-recurring')" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz</button>
             </div>
-            <div class="space-y-3"><div v-for="rec in recurringList" :key="rec.id" class="glass-panel p-4 rounded-2xl flex justify-between items-center"><div><div class="font-bold text-white">{{ rec.name }}</div><div class="text-xs text-slate-400">{{ rec.day_of_month }}-go dnia miesiąca • {{ rec.category ? rec.category.name : '-' }}</div></div><div class="text-right"><div class="font-bold text-white">{{ formatMoney(rec.amount) }}</div><button @click="$emit('delete-recurring', rec.id)" class="text-red-400 text-xs font-bold mt-1">USUŃ</button></div></div></div>
+            <div class="space-y-3"><div v-for="rec in recurringList" :key="rec.id" class="glass-panel p-4 rounded-2xl flex justify-between items-center">
+                <div>
+                    <div class="font-bold text-white">{{ rec.name }}</div>
+                    <div class="text-xs text-slate-400">{{ rec.day_of_month }}-go dnia miesiąca • {{ rec.category ? rec.category.name : '-' }}</div>
+                </div>
+                <div class="text-right">
+                    <div class="font-bold text-white">{{ formatMoney(rec.amount) }}</div>
+                    <div class="flex gap-2 mt-1">
+                        <button @click="$emit('edit-recurring', rec)" class="text-blue-400 text-xs font-bold">EDYTUJ</button>
+                        <button @click="$emit('delete-recurring', rec.id)" class="text-red-400 text-xs font-bold">USUŃ</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>`
 }
