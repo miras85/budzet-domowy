@@ -10,7 +10,7 @@ import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js';
 import PaymentsView from './components/PaymentsView.js?v=3';
 import SettingsView from './components/SettingsView.js?v=52';
-import AddTransactionView from './components/AddTransactionView.js?V=5';
+import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
 import TheNavigation from './components/TheNavigation.js?v=2';
@@ -220,7 +220,7 @@ const app = createApp({
                         date: pay.date,
                         status: 'planowana',
                         loan_id: pay.loan_id,
-                        category_name: 'Spłata zobowiązań'
+                        category_name: pay.name.toLowerCase().includes('hipote') ? 'Kredyt hipoteczny' : 'Spłata zobowiązań'
                     };
                     
                     await API.transactions.create(txData);
@@ -611,7 +611,19 @@ const app = createApp({
         editTxFromModal(tx) { this.selectedCategory = null; this.editTx(tx); },
         async realizeTxFromModal(tx) { await this.realizeTx(tx); this.selectedCategory = null; },
         copyTx(tx) { this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: new Date().toISOString().split('T')[0] }; this.isPlanned = false; this.editingTxId = null; this.currentTab = 'add'; this.selectedCategory = null; window.scrollTo(0,0); this.notify('info', 'Skopiowano'); },
-        handleLoanChange() { if (this.newTx.loan_id) this.newTx.category_name = 'Spłata zobowiązań'; else this.newTx.category_name = ''; },
+        handleLoanChange() {
+            if (this.newTx.loan_id) {
+                const loan = this.activeLoans.find(l => l.id === this.newTx.loan_id);
+                // Jeśli nazwa kredytu zawiera "hipote", ustaw kategorię Hipoteczny
+                if (loan && loan.name.toLowerCase().includes('hipote')) {
+                    this.newTx.category_name = 'Kredyt hipoteczny';
+                } else {
+                    this.newTx.category_name = 'Spłata zobowiązań';
+                }
+            } else {
+                this.newTx.category_name = '';
+            }
+        },
         detectCategory() {
             if(this.editingTxId) return;
             

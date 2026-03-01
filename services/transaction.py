@@ -7,35 +7,34 @@ from sqlalchemy import func
 
 def create_transaction(db: Session, tx: schemas.TransactionCreate):
     """Tworzy nową transakcję z atomową aktualizacją sald"""
-    
     try:
         cat_id = None
         
         # Obsługa kategorii dla pożyczek
         if tx.loan_id:
-            target_cat = "Spłata zobowiązań"
-            cat = db.query(models.Category).filter(func.lower(models.Category.name) == target_cat.lower().strip()).first()
+            # Jeśli użytkownik nie wybrał kategorii, dajemy domyślną
+            if not tx.category_name:
+                tx.category_name = "Spłata zobowiązań"
+            
+            cat = db.query(models.Category).filter(
+                func.lower(models.Category.name) == tx.category_name.lower().strip()
+            ).first()
+            
             if not cat:
-                cat = models.Category(
-                    name=target_cat,
-                    icon_name='tag',  # Default
-                    color='#94a3b8'   # Default
-                )
+                cat = models.Category(name=tx.category_name, icon_name='tag', color='#94a3b8')
                 db.add(cat)
-                db.flush()  # FLUSH zamiast COMMIT
+                db.flush()
             cat_id = cat.id
-        # Obsługa zwykłych kategorii
+            
+        # Obsługa zwykłych kategorii (jeśli nie transfer)
         elif tx.type != 'transfer' and tx.category_name:
-            cat = db.query(models.Category).filter(func.lower(models.Category.name) == tx.category_name.lower().strip()
+            cat = db.query(models.Category).filter(
+                func.lower(models.Category.name) == tx.category_name.lower().strip()
             ).first()
             if not cat:
-                cat = models.Category(
-                    name=tx_data.category_name,
-                    icon_name='tag',
-                    color='#94a3b8'
-                )
+                cat = models.Category(name=tx.category_name, icon_name='tag', color='#94a3b8')
                 db.add(cat)
-                db.flush()  # FLUSH zamiast COMMIT
+                db.flush()
             cat_id = cat.id
 
         new_tx = models.Transaction(
@@ -50,15 +49,14 @@ def create_transaction(db: Session, tx: schemas.TransactionCreate):
             loan_id=tx.loan_id
         )
         db.add(new_tx)
-        db.flush()  # Flush transakcji (dostaniemy ID)
+        db.flush()
         
-        # Aktualizacja sald tylko dla zrealizowanych
         if tx.status == 'zrealizowana':
             utils.update_balance(db, tx.account_id, tx.amount, tx.type, tx.target_account_id, is_reversal=False)
             if tx.loan_id and tx.type == 'expense':
                 utils.update_loan_balance(db, tx.loan_id, tx.amount, is_reversal=False)
         
-        db.commit()  # JEDEN COMMIT na końcu
+        db.commit()
         return new_tx
         
     except Exception as e:
@@ -68,46 +66,40 @@ def create_transaction(db: Session, tx: schemas.TransactionCreate):
 
 def update_transaction(db: Session, tx_id: int, tx_data: schemas.TransactionCreate):
     """Aktualizuje transakcję z atomową aktualizacją sald"""
-    
     old_tx = db.query(models.Transaction).filter(models.Transaction.id == tx_id).first()
     if not old_tx:
         raise HTTPException(status_code=404, detail="Transakcja nie istnieje")
     
     try:
-        # 1. Cofnij skutki starej transakcji (jeśli była zrealizowana)
+        # 1. Cofnij skutki starej transakcji
         if old_tx.status == 'zrealizowana':
             utils.update_balance(db, old_tx.account_id, old_tx.amount, old_tx.type, old_tx.target_account_id, is_reversal=True)
             if old_tx.loan_id and old_tx.type == 'expense':
                 utils.update_loan_balance(db, old_tx.loan_id, old_tx.amount, is_reversal=True)
         
-        # 2. Ustal nową kategorię (BEZ db.commit()!)
+        # 2. Ustal nową kategorię
         cat_id = None
         if tx_data.loan_id:
-            target_cat = "Spłata zobowiązań"
+            if not tx_data.category_name:
+                tx_data.category_name = "Spłata zobowiązań"
+                
             cat = db.query(models.Category).filter(
-            func.lower(models.Category.name) == tx_data.category_name.lower().strip()
+                func.lower(models.Category.name) == tx_data.category_name.lower().strip()
             ).first()
+            
             if not cat:
-                cat = models.Category(
-                    name=target_cat,
-                    icon_name='tag',  # Default
-                    color='#94a3b8'   # Default
-                )
+                cat = models.Category(name=tx_data.category_name, icon_name='tag', color='#94a3b8')
                 db.add(cat)
-                db.flush()  # FLUSH zamiast COMMIT
+                db.flush()
             cat_id = cat.id
         elif tx_data.type != 'transfer' and tx_data.category_name:
             cat = db.query(models.Category).filter(
-            func.lower(models.Category.name) == tx_data.category_name.lower().strip()
+                func.lower(models.Category.name) == tx_data.category_name.lower().strip()
             ).first()
             if not cat:
-                cat = models.Category(
-                    name=tx_data.category_name,
-                    icon_name='tag',
-                    color='#94a3b8'
-                )
+                cat = models.Category(name=tx_data.category_name, icon_name='tag', color='#94a3b8')
                 db.add(cat)
-                db.flush()  # FLUSH zamiast COMMIT
+                db.flush()
             cat_id = cat.id
 
         # 3. Zaktualizuj pola transakcji
@@ -121,13 +113,13 @@ def update_transaction(db: Session, tx_id: int, tx_data: schemas.TransactionCrea
         old_tx.status = tx_data.status
         old_tx.loan_id = tx_data.loan_id
         
-        # 4. Zastosuj skutki nowej transakcji (jeśli jest zrealizowana)
+        # 4. Zastosuj skutki nowej transakcji
         if tx_data.status == 'zrealizowana':
             utils.update_balance(db, tx_data.account_id, tx_data.amount, tx_data.type, tx_data.target_account_id, is_reversal=False)
             if tx_data.loan_id and tx_data.type == 'expense':
                 utils.update_loan_balance(db, tx_data.loan_id, tx_data.amount, is_reversal=False)
         
-        db.commit()  # JEDEN COMMIT na końcu
+        db.commit()
         return old_tx
         
     except Exception as e:
