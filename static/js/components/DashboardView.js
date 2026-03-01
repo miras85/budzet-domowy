@@ -62,7 +62,7 @@ export default {
                </div>
             </div>
             <div class="text-right">
-                <div class="text-xs text-slate-500">Odłożono łącznie na cele</div>
+                <div class="text-xs text-slate-500">Odłożono na cele</div>
                 <div class="text-lg font-bold text-white">{{ formatMoney(dashboard.goals_total_saved) }}</div>
                 <div class="text-[9px] text-slate-500 mt-1 italic">ℹ️ Suma środków na wszystkich celach</div>
             </div>
