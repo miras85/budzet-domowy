@@ -67,7 +67,7 @@
                 <!-- VIEWS -->
                 <dashboard-view v-if="currentTab === 'dashboard'" :dashboard="dashboard" :accounts="accounts" :filtered-transactions="filteredTransactions" :grouped-categories="groupedCategories" :expense-categories="expenseCategories" :budget-ranking="budgetRanking" v-model:view-mode="viewMode" v-model:budget-ranking-expanded="budgetRankingExpanded" v-model:filter-status="filterStatus" v-model:filter-account="filterAccount" v-model:selected-chart-segment="selectedChartSegment" :chart-colors="chartColors" @change-period="changePeriod" @realize-tx="realizeTx" @copy-tx="copyTx" @edit-tx="editTx" @delete-tx="deleteTx" @open-category="openCategoryDetails" @render-charts="renderChart"></dashboard-view>
                 <accounts-view v-if="currentTab === 'accounts'" :accounts="accounts" @create-account="createTestAccount" @edit-account="editAccount" @delete-account="deleteAccount" @trigger-import="triggerImport"></accounts-view>
-                <goals-view v-if="currentTab === 'goals'" :goals="goals" :savings-accounts="savingsAccounts" v-model:show-add-goal="showAddGoal" :new-goal="newGoal" @submit-goal="submitGoal" @delete-goal="deleteGoal" @open-fund="openFundGoal" @open-withdraw="openWithdrawGoal" @open-transfer="openTransferGoal"></goals-view>
+                <goals-view v-if="currentTab === 'goals'" :goals="goals" :savings-accounts="savingsAccounts" v-model:show-add-goal="showAddGoal" :new-goal="newGoal" @submit-goal="submitGoal" @delete-goal="deleteGoal" @open-fund="openFundGoal" @edit-goal="editGoal" @open-withdraw="openWithdrawGoal" @open-transfer="openTransferGoal"></goals-view>
                 <payments-view v-if="currentTab === 'payments'" :filtered-loans="filteredLoans" v-model:show-paid-loans="showPaidLoans" v-model:show-add-loan="showAddLoan" :new-loan="newLoan" v-model:show-add-recurring="showAddRecurring" :new-recurring="newRecurring" :recurring-list="recurringList" :accounts="accounts" :filtered-categories="filteredCategories" v-model:category-search="categorySearch" @submit-loan="submitLoan" @edit-loan="editLoan" @submit-recurring="submitRecurring" @delete-recurring="deleteRecurring"  @edit-recurring="editRecurring"></payments-view>
                 <settings-view v-if="currentTab === 'settings'" :categories="categories" :overrides="overrides" v-model:new-category-name="newCategoryName" :new-override="newOverride" :security="security" @add-category="addCategory" @update-category="updateCategory" @delete-category="deleteCategory" @add-override="addOverride" @delete-override="deleteOverride" @change-password="changePassword" @register-user="registerUser"></settings-view>
                 <add-transaction-view v-if="currentTab === 'add'" :new-tx="newTx" :accounts="accounts" :active-loans="activeLoans" :filtered-categories="filteredCategories" v-model:category-search="categorySearch" :editing-tx-id="editingTxId" v-model:is-planned="isPlanned" @submit-transaction="submitTransaction" @cancel-edit="cancelEdit" @detect-category="detectCategory" @handle-loan-change="handleLoanChange"></add-transaction-view>
@@ -216,6 +216,30 @@
             <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
             <div v-if="withdrawingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="withdrawingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Wypłać z: {{ withdrawingGoal.name }}</h3><div class="space-y-3"><div class="bg-slate-800 p-3 rounded-xl border border-slate-700 mb-2"><div class="text-xs text-slate-400 uppercase font-bold">Dostępne środki</div><div class="text-lg font-bold text-green-400">{{ formatMoney(withdrawingGoal.current_amount) }}</div></div><label class="text-xs text-slate-400 uppercase font-bold">Przelej na konto</label><select v-model="withdrawData.target_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.balance) }})</option></select><input v-model="withdrawData.amount" type="number" placeholder="Kwota do wypłaty" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><div class="flex gap-2 mt-2"><button @click="withdrawData.amount = withdrawingGoal.current_amount" class="text-xs text-blue-400 font-bold py-2 px-3 bg-slate-800 rounded-lg border border-slate-700">Całość</button></div><button @click="submitWithdrawGoal" class="w-full bg-red-600 hover:bg-red-500 py-3 rounded-xl font-bold text-sm mt-2 text-white shadow-lg shadow-red-900/20">Potwierdź wypłatę</button></div></div></div>
             <div v-if="isLoggedIn && duePayments.length > 0" class="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"><div class="glass-panel w-full max-w-md rounded-2xl p-6 border border-blue-500/50"><h3 class="text-xl font-bold text-white mb-2">🔔 Płatności cykliczne</h3><p class="text-sm text-slate-400 mb-4">Poniższe opłaty są wymagalne w tym miesiącu. Czy chcesz je dodać?</p><div class="space-y-2 max-h-[50vh] overflow-y-auto mb-4"><div v-for="pay in duePayments" :key="pay.id" class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div><div class="font-bold text-white text-sm">{{ pay.name }}</div><div class="text-xs text-slate-400">{{ pay.category }}</div></div><div class="flex items-center gap-3"><div class="font-bold text-white">{{ formatMoney(pay.amount) }}</div><button @click="skipRecurring(pay)" class="bg-slate-700 text-slate-400 w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-slate-600 hover:text-white transition-colors" title="Pomiń w tym miesiącu">✕</button><button @click="processRecurring(pay)" class="bg-green-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold hover:bg-green-500 transition-colors" title="Dodaj do planowanych">✓</button></div></div></div><button @click="duePayments = []" class="w-full py-3 text-slate-400 text-sm font-bold">Zamknij (Zrobię to później)</button></div></div>
+            
+            <!-- Modal Edycji Celu -->
+            <div v-if="editingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="editingGoal = null">
+                <div class="glass-panel w-full max-w-md rounded-2xl p-5">
+                    <h3 class="text-xl font-bold text-white mb-4">Edytuj Cel</h3>
+                    <div class="space-y-3">
+                        <input v-model="editingGoal.name" placeholder="Nazwa celu" class="input-dark w-full p-3 rounded-xl">
+                        
+                        <label class="text-xs text-slate-400 uppercase font-bold">Konto oszczędnościowe</label>
+                        <select v-model="editingGoal.account_id" class="input-dark w-full p-3 rounded-xl">
+                            <option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }}</option>
+                        </select>
+                        
+                        <label class="text-xs text-slate-400 uppercase font-bold">Kwota docelowa</label>
+                        <input v-model="editingGoal.target_amount" type="number" class="input-dark w-full p-3 rounded-xl">
+                        
+                        <label class="text-xs text-slate-400 uppercase font-bold">Termin</label>
+                        <input v-model="editingGoal.deadline" type="date" class="input-dark w-full p-3 rounded-xl">
+                        
+                        <button @click="submitUpdateGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm mt-2">Zapisz zmiany</button>
+                    </div>
+                </div>
+            </div>
+            
             <loan-alerts-modal
                 v-if="showLoanAlerts"
                 :alerts="loanAlerts"
@@ -227,6 +251,6 @@
             
         </div>
     </div>
-    <script type="module" src="/static/js/main.js?v=77"></script>
+    <script type="module" src="/static/js/main.js?v=83"></script>
 </body>
 </html>

@@ -82,6 +82,12 @@ class GoalTransfer(BaseModel):
 class GoalWithdraw(BaseModel):
     amount: float
     target_account_id: int
+    
+class GoalUpdate(BaseModel):
+    name: str
+    target_amount: float
+    deadline: date
+    account_id: int
 
 # --- IMPORT CSV ---
 class TransactionImport(BaseModel):

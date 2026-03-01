@@ -109,6 +109,21 @@ def fund_goal(goal_id: int, fund: schemas.GoalFund, db: Session = Depends(databa
 def withdraw_goal_funds(goal_id: int, withdraw: schemas.GoalWithdraw, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     goal_service.withdraw_goal(db, goal_id, withdraw)
     return {"status": "withdrawn"}
+    
+    
+@router.put("/goals/{goal_id}")
+def update_goal(goal_id: int, goal_data: schemas.GoalUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    db_goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
+    if not db_goal:
+        raise HTTPException(status_code=404, detail="Cel nie istnieje")
+    
+    db_goal.name = goal_data.name
+    db_goal.target_amount = goal_data.target_amount
+    db_goal.deadline = goal_data.deadline
+    db_goal.account_id = goal_data.account_id
+    
+    db.commit()
+    return {"status": "updated"}
 
 @router.post("/goals/{goal_id}/transfer")
 def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):

@@ -1,13 +1,13 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js?v=53';
+import * as API from './api.js?v=54';
 import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
 import DashboardView from './components/DashboardView.js?v=53';
 import AccountsView from './components/AccountsView.js';
-import GoalsView from './components/GoalsView.js';
+import GoalsView from './components/GoalsView.js?v=2';
 import PaymentsView from './components/PaymentsView.js?v=3';
 import SettingsView from './components/SettingsView.js?v=52';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
@@ -30,6 +30,7 @@ const app = createApp({
             transitionName: 'slide-next',
             budgetRankingExpanded: false,  // NOWY - domyślnie zwinięty
             editingRecurring: null,
+            editingGoal: null,
             
             // Modale
             showAddLoan: false, showPaidLoans: false, showAddGoal: false, showAddRecurring: false, showSearch: false,
@@ -452,6 +453,35 @@ const app = createApp({
             this.showAddRecurring = true;
         },
 
+        editGoal(goal) {
+            this.editingGoal = { ...goal }; // Kopiujemy dane celu do edycji
+            // deadline musimy sformatować do YYYY-MM-DD dla inputa date
+            if (this.editingGoal.deadline) {
+                this.editingGoal.deadline = this.editingGoal.deadline.split('T')[0];
+            }
+        },
+
+        async submitUpdateGoal() {
+            try {
+                const response = await API.goals.update(this.editingGoal.id, {
+                    name: this.editingGoal.name,
+                    target_amount: parseFloat(this.editingGoal.target_amount),
+                    deadline: this.editingGoal.deadline,
+                    account_id: this.editingGoal.account_id
+                });
+                
+                if (response.ok) {
+                    this.notify('success', 'Cel zaktualizowany');
+                    this.editingGoal = null;
+                    await this.fetchGoals();
+                }
+            } catch (e) {
+                this.notify('error', 'Błąd aktualizacji celu');
+            }
+        },
+        
+        
+        
         async submitRecurring() {
             if (this.editingRecurring && this.editingRecurring.id) {
                 // UPDATE
