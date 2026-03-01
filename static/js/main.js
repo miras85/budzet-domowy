@@ -408,7 +408,28 @@ const app = createApp({
         async updateLoan() { await API.loans.update(this.editingLoan.id, this.editingLoan); this.editingLoan = null; this.fetchLoans(); this.notify('success', 'Zaktualizowano'); },
         
         async submitGoal() { if (!this.newGoal.account_id) return this.notify('error', "Wybierz konto!"); await API.goals.create(this.newGoal); this.showAddGoal = false; this.fetchGoals(); this.newGoal = { name: '', target_amount: '', deadline: new Date().toISOString().split('T')[0], account_id: null }; this.notify('success', 'Utworzono'); },
-        async deleteGoal(id) { if(!confirm("Usunąć?")) return; await API.goals.delete(id); this.fetchGoals(); this.notify('info', 'Usunięto'); },
+        async deleteGoal(id) {
+            if(!confirm("Czy na pewno chcesz usunąć ten cel? Środki zostaną odblokowane i będą widoczne jako dostępne na koncie.")) return;
+            
+            try {
+                const response = await API.goals.delete(id);
+                
+                if (response.ok) {
+                    this.notify('success', 'Cel usunięty, środki zostały odblokowane');
+                    
+                    // KLUCZOWE: Odświeżamy oba zestawy danych
+                    await this.fetchGoals();    // Usuwa cel z widoku celów
+                    await this.fetchAccounts(); // Aktualizuje "Dostępne środki" w widoku kont
+                    await this.fetchData();     // Aktualizuje Dashboard
+                } else {
+                    const errorData = await response.json();
+                    this.notify('error', 'Błąd: ' + (errorData.detail || 'Nie udało się usunąć celu'));
+                }
+            } catch (e) {
+                this.notify('error', 'Błąd połączenia. Sprawdź czy serwer działa.');
+                console.error("Błąd usuwania celu:", e);
+            }
+        },
         async submitFundGoal() { await API.goals.fund(this.fundingGoal.id, this.fundData); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); this.notify('success', 'Zasilono'); },
         async submitWithdrawGoal() { if (!this.withdrawData.amount || !this.withdrawData.target_account_id) return this.notify('error', "Wypełnij pola"); if (parseFloat(this.withdrawData.amount) > parseFloat(this.withdrawingGoal.current_amount)) return this.notify('error', "Brak środków!"); await API.goals.withdraw(this.withdrawingGoal.id, this.withdrawData); this.withdrawingGoal = null; this.fetchGoals(); this.fetchAccounts(); this.notify('success', 'Wypłacono'); },
         async submitTransferGoal() { await API.goals.transfer(this.transferingGoal.id, this.transferData); this.transferingGoal = null; this.fetchGoals(); this.notify('success', 'Przeniesiono'); },

@@ -116,7 +116,29 @@ def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Sessio
     return {"status": "transferred"}
 
 @router.delete("/goals/{goal_id}")
-def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)): db.query(models.Goal).filter(models.Goal.id == goal_id).delete(); db.commit(); return {"status": "deleted"}
+def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    try:
+        # 1. Pobieramy cel, żeby sprawdzić czy istnieje
+        goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Cel nie istnieje")
+
+        # 2. Usuwamy powiązane wpłaty (GoalContribution) - to rozwiązuje błąd bazy
+        db.query(models.GoalContribution).filter(models.GoalContribution.goal_id == goal_id).delete()
+        
+        # 3. Usuwamy sam cel
+        db.delete(goal)
+        
+        # 4. Zatwierdzamy zmiany atomowo
+        db.commit()
+        
+        print(f"✅ Cel ID {goal_id} usunięty. Środki zostały zwolnione na koncie ID {goal.account_id}")
+        return {"status": "deleted"}
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ BŁĄD podczas usuwania celu: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
 
 @router.get("/loans")
 def get_loans(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
