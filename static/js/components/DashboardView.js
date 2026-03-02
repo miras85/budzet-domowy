@@ -3,7 +3,7 @@ import { ICON_PATHS } from '../icons.js?v=51';
 
 export default {
     props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking','budgetRankingExpanded'],
-    emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts','update:budgetRankingExpanded'],
+    emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts', 'update:budgetRankingExpanded'],
     setup() {
         return {
             ...Utils,

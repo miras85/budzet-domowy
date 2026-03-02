@@ -5,9 +5,9 @@ import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=53';
+import DashboardView from './components/DashboardView.js?v=55';
 import AccountsView from './components/AccountsView.js';
-import GoalsView from './components/GoalsView.js?v=3';
+import GoalsView from './components/GoalsView.js?v=7';
 import PaymentsView from './components/PaymentsView.js?v=3';
 import SettingsView from './components/SettingsView.js?v=52';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
