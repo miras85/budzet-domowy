@@ -1,13 +1,13 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js?v=54';
+import * as API from './api.js?v=55';
 import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
 import DashboardView from './components/DashboardView.js?v=53';
 import AccountsView from './components/AccountsView.js';
-import GoalsView from './components/GoalsView.js?v=2';
+import GoalsView from './components/GoalsView.js?v=3';
 import PaymentsView from './components/PaymentsView.js?v=3';
 import SettingsView from './components/SettingsView.js?v=52';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
@@ -31,13 +31,15 @@ const app = createApp({
             budgetRankingExpanded: false,  // NOWY - domyślnie zwinięty
             editingRecurring: null,
             editingGoal: null,
+            showArchivedGoals: false,      // Toggle archiwum
+            archivedGoals: [],             // Lista archiwalnych
             
             // Modale
             showAddLoan: false, showPaidLoans: false, showAddGoal: false, showAddRecurring: false, showSearch: false,
             editingTxId: null, editingLoan: null, fundingGoal: null, transferingGoal: null, selectedCategory: null, withdrawingGoal: null, categoryTrend: null, categoryModalTab: 'overview',
             
             // Formularze
-            withdrawData: { target_account_id: null, amount: '' },
+            withdrawData: { target_account_id: null, amount: '', archive_after: false },
             fundData: { source_account_id: null, target_savings_id: null, amount: '' },
             transferData: { target_goal_id: null, amount: '' },
             searchCriteria: { q: '', date_from: '', date_to: '', category_id: null, account_id: null, type: 'all', min_amount: '', max_amount: '' },
@@ -432,8 +434,62 @@ const app = createApp({
             }
         },
         async submitFundGoal() { await API.goals.fund(this.fundingGoal.id, this.fundData); this.fundingGoal = null; this.fetchGoals(); this.fetchAccounts(); this.notify('success', 'Zasilono'); },
-        async submitWithdrawGoal() { if (!this.withdrawData.amount || !this.withdrawData.target_account_id) return this.notify('error', "Wypełnij pola"); if (parseFloat(this.withdrawData.amount) > parseFloat(this.withdrawingGoal.current_amount)) return this.notify('error', "Brak środków!"); await API.goals.withdraw(this.withdrawingGoal.id, this.withdrawData); this.withdrawingGoal = null; this.fetchGoals(); this.fetchAccounts(); this.notify('success', 'Wypłacono'); },
+        async submitWithdrawGoal() {
+            if (!this.withdrawData.amount || !this.withdrawData.target_account_id) {
+                return this.notify('error', "Wypełnij wszystkie pola");
+            }
+            if (parseFloat(this.withdrawData.amount) > parseFloat(this.withdrawingGoal.current_amount)) {
+                return this.notify('error', "Kwota przekracza środki na celu!");
+            }
+            
+            await API.goals.withdraw(this.withdrawingGoal.id, this.withdrawData);
+            
+            this.withdrawingGoal = null;
+            this.withdrawData = { target_account_id: null, amount: '', archive_after: false };
+            
+            await this.fetchGoals();
+            await this.fetchAccounts();
+            
+            this.notify('success', this.withdrawData.archive_after ?
+                'Wypłacono i zarchiwizowano cel' :
+                'Wypłacono środki z celu'
+            );
+        },
         async submitTransferGoal() { await API.goals.transfer(this.transferingGoal.id, this.transferData); this.transferingGoal = null; this.fetchGoals(); this.notify('success', 'Przeniesiono'); },
+        
+        // Archiwizacja celu:
+        async archiveGoal(id) {
+            if(!confirm("Archiwizować ten cel? Zniknie z głównej listy, ale zostanie w historii.")) return;
+            
+            try {
+                const response = await API.goals.archive(id);
+                if (response.ok) {
+                    this.notify('success', 'Cel został zarchiwizowany');
+                    await this.fetchGoals();
+                    await this.fetchAccounts();
+                }
+            } catch(e) {
+                this.notify('error', 'Błąd archiwizacji');
+            }
+        },
+
+        // Pobierz archiwalne:
+        async fetchArchivedGoals() {
+            try {
+                this.archivedGoals = await API.goals.getArchived();
+            } catch(e) {
+                console.error('Błąd pobierania archiwum:', e);
+            }
+        },
+
+        // Toggle archiwum:
+        async toggleArchivedGoals() {
+            this.showArchivedGoals = !this.showArchivedGoals;
+            if (this.showArchivedGoals) {
+                await this.fetchArchivedGoals();
+            }
+        },
+        
         editRecurring(rec) {
             console.log('🔧 editRecurring wywołane:', rec);
             

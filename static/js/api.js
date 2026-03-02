@@ -87,6 +87,15 @@ export const goals = {
     async fund(id, data) { return authFetch(`/api/goals/${id}/fund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
     async withdraw(id, data) { return authFetch(`/api/goals/${id}/withdraw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
     async transfer(id, data) { return authFetch(`/api/goals/${id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); },
+    async archive(id) {
+            return authFetch(`/api/goals/${id}/archive`, {
+                method: 'POST'
+            });
+        },
+        
+        async getArchived() {
+            return (await authFetch('/api/goals/archived')).json();
+        },
     async update(id, data) {
             return authFetch(`/api/goals/${id}`, {
                 method: 'PUT',

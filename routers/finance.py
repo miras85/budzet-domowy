@@ -155,6 +155,38 @@ def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_us
         print(f"❌ BŁĄD podczas usuwania celu: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
 
+@router.post("/goals/{goal_id}/archive")
+def archive_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    """Archiwizuje cel - znika z głównej listy ale zostaje w historii"""
+    try:
+        goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Cel nie istnieje")
+        
+        goal.is_archived = True
+        db.commit()
+        return {"status": "archived"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/goals/archived")
+def get_archived_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    """Zwraca zarchiwizowane cele"""
+    goals = db.query(models.Goal).filter(models.Goal.is_archived == True).all()
+    result = []
+    for g in goals:
+        result.append({
+            "id": g.id,
+            "name": g.name,
+            "target_amount": float(g.target_amount),
+            "current_amount": float(g.current_amount),
+            "deadline": str(g.deadline),
+            "account_id": g.account_id
+        })
+    return result
+
 @router.get("/loans")
 def get_loans(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     loans = db.query(models.Loan).order_by(models.Loan.next_payment_date).all()

@@ -72,7 +72,7 @@ def fund_goal(db: Session, goal_id: int, fund: schemas.GoalFund):
         
         
 def withdraw_goal(db: Session, goal_id: int, withdraw: schemas.GoalWithdraw):
-    """Wypłaca z celu z atomową aktualizacją sald"""
+    """Wypłaca z celu z opcjonalną archiwizacją"""
     
     goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
     if not goal:
@@ -96,7 +96,7 @@ def withdraw_goal(db: Session, goal_id: int, withdraw: schemas.GoalWithdraw):
             date=date.today()
         ))
         
-        # Jeśli cel jest na innym koncie niż docelowe - utwórz transfer
+        # Transfer środków jeśli inne konto
         if goal.account_id != target_acc.id:
             source_acc = db.query(models.Account).filter(models.Account.id == goal.account_id).first()
             
@@ -111,8 +111,11 @@ def withdraw_goal(db: Session, goal_id: int, withdraw: schemas.GoalWithdraw):
             )
             db.add(tx)
             db.flush()
-            
             utils.update_balance(db, source_acc.id, withdraw.amount, "transfer", target_acc.id, is_reversal=False)
+        
+        # NOWE: Archiwizuj po wypłacie jeśli zaznaczono checkbox
+        if hasattr(withdraw, 'archive_after') and withdraw.archive_after:
+            goal.is_archived = True
         
         db.commit()
         
@@ -121,9 +124,7 @@ def withdraw_goal(db: Session, goal_id: int, withdraw: schemas.GoalWithdraw):
         raise
     except Exception as e:
         db.rollback()
-        print(f"❌ BŁĄD withdraw_goal: {e}")
-        raise HTTPException(status_code=500, detail=f"Błąd wypłaty z celu: {str(e)}")
-        
+        raise HTTPException(status_code=500, detail=f"Błąd wypłaty: {str(e)}")
 
 def transfer_goal(db: Session, goal_id: int, transfer: schemas.GoalTransfer):
     """Transfer między celami z atomową aktualizacją"""

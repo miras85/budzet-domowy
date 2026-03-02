@@ -82,6 +82,7 @@ class GoalTransfer(BaseModel):
 class GoalWithdraw(BaseModel):
     amount: float
     target_account_id: int
+    archive_after: bool = False  # NOWE - domyślnie False
     
 class GoalUpdate(BaseModel):
     name: str
