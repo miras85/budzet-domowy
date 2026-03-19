@@ -10,7 +10,13 @@ load_dotenv()
 # Pobieramy adres z pliku .env (lub używamy domyślnego, jeśli brak pliku)
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "mysql+mysqlconnector://root:@localhost:3306/domowy_budzet")
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_pre_ping=True,        # Sprawdza czy połączenie żyje przed użyciem
+    pool_recycle=3600,         # Odświeża połączenia co 1h (przed MySQL timeout)
+    pool_size=5,               # Max 5 połączeń w puli
+    max_overflow=10            # Max 10 dodatkowych połączeń
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
