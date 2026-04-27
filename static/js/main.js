@@ -8,7 +8,7 @@ import LoginView from './components/LoginView.js';
 import DashboardView from './components/DashboardView.js?v=55';
 import AccountsView from './components/AccountsView.js';
 import GoalsView from './components/GoalsView.js?v=8';
-import PaymentsView from './components/PaymentsView.js?v=3';
+import PaymentsView from './components/PaymentsView.js?v=5';
 import SettingsView from './components/SettingsView.js?v=52';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js';
@@ -56,7 +56,7 @@ const app = createApp({
             // Dane
             dashboard: { total_balance: 0, disposable_balance: 0, forecast_ror: 0, savings_realized: 0, savings_rate: 0, total_debt: 0, monthly_income_realized: 0, monthly_income_forecast: 0, monthly_expenses_realized: 0, monthly_expenses_forecast: 0, goals_monthly_need: 0, goals_total_saved: 0, recent_transactions: [], period_start: '', period_end: '' },
             accounts: [], categories: [],
-            loansData: { loans: []},
+            loansData: { loans: [], upcoming: [], total_monthly_payments: 0, period_start: '', period_end: '' },
             loanAlerts: {
                 overdue: [],
                 urgent: [],
@@ -356,7 +356,12 @@ const app = createApp({
             if (!this.isLoggedIn) return;
             
             const data = await API.loans.getAll();
-            this.loansData = { loans: data.loans };
+            this.loansData = {
+                loans: data.loans,
+                total_monthly_payments: data.total_monthly_payments || 0,
+                period_start: data.period_start || '',
+                period_end: data.period_end || ''
+            };
             
             // Zapisz alerty
             if (data.alerts) {

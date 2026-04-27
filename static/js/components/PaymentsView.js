@@ -1,12 +1,29 @@
 import * as Utils from '../utils.js';
 export default {
-    props: ['filteredLoans', 'showPaidLoans', 'showAddLoan', 'newLoan', 'showAddRecurring', 'newRecurring', 'recurringList', 'accounts', 'filteredCategories', 'categorySearch'],
+    props: ['filteredLoans', 'showPaidLoans', 'showAddLoan', 'newLoan', 'showAddRecurring', 'newRecurring', 'recurringList', 'accounts', 'filteredCategories', 'categorySearch', 'loansData'],
     emits: ['update:showPaidLoans', 'update:showAddLoan', 'update:showAddRecurring', 'update:categorySearch', 'submit-loan', 'edit-loan', 'submit-recurring', 'delete-recurring','edit-recurring'],
     data() { return { showCategorySelector: false } },
     setup() { return { ...Utils }; },
     template: `
     <div class="px-6">
         <h2 class="text-xl font-bold text-white mb-6 mt-4">Zobowiązania</h2>
+        <!-- NOWE: Suma rat w tym cyklu -->
+        <div v-if="loansData.total_monthly_payments > 0" 
+             class="glass-panel p-4 rounded-2xl mb-6 border-l-4 border-red-500">
+            <div class="flex justify-between items-center">
+                <div>
+                    <div class="text-xs text-slate-400 uppercase font-bold mb-1">
+                        Raty kredytów w tym cyklu
+                    </div>
+                    <div class="text-xs text-slate-500">
+                        {{ formatDateShort(loansData.period_start) }} - {{ formatDateShort(loansData.period_end) }}
+                    </div>
+                </div>
+                <div class="text-xl font-bold text-red-400">
+                    {{ formatMoney(loansData.total_monthly_payments) }}
+                </div>
+            </div>
+        </div>
         <div class="mb-8">
             <div class="flex justify-between items-center mb-4"><h3 class="text-sm font-bold text-slate-400 uppercase">Kredyty i Raty</h3><button @click="$emit('update:showAddLoan', !showAddLoan)" class="text-blue-400 text-xs font-bold">{{ showAddLoan ? 'Anuluj' : '+ Dodaj' }}</button></div>
             <div class="flex justify-end mb-2"><label class="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" :checked="showPaidLoans" @change="$emit('update:showPaidLoans', $event.target.checked)"> Pokaż spłacone</label></div>

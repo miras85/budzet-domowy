@@ -192,17 +192,19 @@ def get_loans(db: Session = Depends(database.get_db), current_user: models.User 
     loans = db.query(models.Loan).order_by(models.Loan.next_payment_date).all()
     today = date.today()
     
-    print(f"\n🔍 ===== GET /api/loans wywołane, dziś: {today} =====")
+    # Pobierz obecny cykl rozliczeniowy
+    start_date, end_date = utils.get_billing_period(db, 0)
     
     # Kategorie alertów
-    overdue = []      # Przeterminowane (< today)
-    urgent = []       # Pilne (0-7 dni)
-    upcoming = []     # Zbliżające się (8-30 dni)
+    overdue = []
+    urgent = []
+    upcoming = []
     all_loans = []
     
     total_overdue = 0.0
     total_urgent = 0.0
     total_upcoming = 0.0
+    total_monthly_payments = 0.0  # NOWE: suma rat w tym cyklu
     
     for l in loans:
         # Dodaj do listy wszystkich
@@ -215,36 +217,26 @@ def get_loans(db: Session = Depends(database.get_db), current_user: models.User 
             "next_date": str(l.next_payment_date)
         })
         
-        # Jeśli kredyt spłacony - pomiń alerty
+        # Jeśli kredyt spłacony - pomiń
         if l.remaining_amount <= 0:
-            print(f"   ⏭️ {l.name}: spłacony (remaining=0)")
             continue
         
-        print(f"\n   📋 Sprawdzam kredyt: {l.name} (ID: {l.id})")
-        print(f"      Next payment: {l.next_payment_date}")
+        # NOWE: Zlicz raty których next_payment_date jest w obecnym cyklu
+        if start_date <= l.next_payment_date <= end_date:
+            total_monthly_payments += float(l.monthly_payment)
         
-       # Sprawdź czy płatność już jest planowana (w przyszłości, bez ograniczenia do cyklu)
-        print(f"      Szukam planowanej transakcji dla loan_id={l.id}")
-
+        # Sprawdź czy płatność już jest planowana
         existing_planned = db.query(models.Transaction).filter(
             models.Transaction.loan_id == l.id,
             models.Transaction.status == 'planowana',
-            models.Transaction.date >= today  # Tylko przyszłe/dzisiejsze
+            models.Transaction.date >= today
         ).first()
         
-        print(f"      Szukam planowanej transakcji dla loan_id={l.id}, status='planowana'")
-        print(f"      Znaleziono: {existing_planned is not None}")
-        
         if existing_planned:
-            print(f"      ✅ Jest planowana: '{existing_planned.description}' (data: {existing_planned.date})")
-            print(f"      ⏭️ POMIJAM ALERT")
             continue
-        else:
-            print(f"      ⚠️ BRAK planowanej - DODAM DO ALERTÓW")
         
         # Oblicz dni do płatności
         days_until = (l.next_payment_date - today).days
-        print(f"      Dni do płatności: {days_until}")
         
         payment_info = {
             "loan_id": l.id,
@@ -256,26 +248,14 @@ def get_loans(db: Session = Depends(database.get_db), current_user: models.User 
         
         # Kategoryzuj według pilności
         if days_until < 0:
-            print(f"      🔴 OVERDUE (przeterminowane)")
             overdue.append(payment_info)
             total_overdue += float(l.monthly_payment)
         elif days_until <= 7:
-            print(f"      🟡 URGENT (pilne 0-7 dni)")
             urgent.append(payment_info)
             total_urgent += float(l.monthly_payment)
         elif days_until <= 30:
-            print(f"      🔵 UPCOMING (zbliżające się 8-30 dni)")
             upcoming.append(payment_info)
             total_upcoming += float(l.monthly_payment)
-        else:
-            print(f"      ⏭️ Za daleko ({days_until} dni) - pomijam")
-    
-    print(f"\n📊 Podsumowanie alertów:")
-    print(f"   Overdue: {len(overdue)} ({total_overdue} zł)")
-    print(f"   Urgent: {len(urgent)} ({total_urgent} zł)")
-    print(f"   Upcoming: {len(upcoming)} ({total_upcoming} zł)")
-    print(f"   has_alerts: {len(overdue) > 0 or len(urgent) > 0 or len(upcoming) > 0}")
-    print(f"===== KONIEC GET /api/loans =====\n")
     
     return {
         "loans": all_loans,
@@ -286,8 +266,12 @@ def get_loans(db: Session = Depends(database.get_db), current_user: models.User 
             "total_overdue": total_overdue,
             "total_urgent": total_urgent,
             "total_upcoming": total_upcoming,
-            "has_alerts": len(overdue) > 0 or len(urgent) > 0 or len(upcoming) > 0
-        }
+            "has_alerts": len(overdue) > 0 or len(urgent) > 0
+        },
+        # NOWE: Suma rat w tym cyklu
+        "total_monthly_payments": total_monthly_payments,
+        "period_start": str(start_date),
+        "period_end": str(end_date)
     }
     
 @router.post("/loans")

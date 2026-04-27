@@ -20,17 +20,42 @@ def get_dashboard_data(db: Session, offset: int):
     raw_debt = db.query(func.sum(models.Loan.remaining_amount)).scalar()
     total_debt = float(raw_debt) if raw_debt is not None else 0.0
     
-    # 2. Przychody i Wydatki (Realizowane i Planowane)
+    # 2. Przychody i Wydatki
     inc_realized = get_sum((models.Transaction.type == 'income') & (models.Transaction.status == 'zrealizowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
     inc_planned = get_sum((models.Transaction.type == 'income') & (models.Transaction.status == 'planowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
     
     exp_realized = get_sum((models.Transaction.type == 'expense') & (models.Transaction.status == 'zrealizowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
     exp_planned = get_sum((models.Transaction.type == 'expense') & (models.Transaction.status == 'planowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
 
-    # 3. Prognoza ROR
-    forecast_ror = disposable_balance + inc_planned - exp_planned
+    # 3. Planowane transfery Z kont ROR → Oszczędności
+    planned_transfers = db.query(models.Transaction).filter(
+        models.Transaction.type == 'transfer',
+        models.Transaction.status == 'planowana',
+        models.Transaction.date >= start_date,
+        models.Transaction.date <= end_date
+    ).all()
 
-    # 4. Transfery na oszczędności (do wskaźnika oszczędności)
+    planned_transfers_out = 0.0
+    planned_transfers_in = 0.0
+
+    for t in planned_transfers:
+        source = db.query(models.Account).filter(
+            models.Account.id == t.account_id
+        ).first()
+        target = db.query(models.Account).filter(
+            models.Account.id == t.target_account_id
+        ).first()
+        
+        if source and target:
+            if not source.is_savings and target.is_savings:
+                planned_transfers_out += float(t.amount)
+            elif source.is_savings and not target.is_savings:
+                planned_transfers_in += float(t.amount)
+
+    # 4. Prognoza ROR (uwzględnia planowane transfery)
+    forecast_ror = disposable_balance + inc_planned - exp_planned - planned_transfers_out + planned_transfers_in
+
+    # 5. Transfery na oszczędności (do wskaźnika oszczędności)
     period_transfers = db.query(models.Transaction).options(
         joinedload(models.Transaction.account),
         joinedload(models.Transaction.target_account)
@@ -50,7 +75,7 @@ def get_dashboard_data(db: Session, offset: int):
     if inc_realized > 0:
         savings_rate = ((inc_realized - exp_realized) / inc_realized) * 100
 
-    # 5. Cele - obliczanie monthly_need
+    # 6. Cele - obliczanie monthly_need
     goals = db.query(models.Goal).filter(models.Goal.is_archived == False).all()
     goals_monthly_need = 0.0
     goals_total_saved = 0.0
@@ -60,16 +85,13 @@ def get_dashboard_data(db: Session, offset: int):
         target = float(g.target_amount)
         goals_total_saved += current
         
-        # ===== DLA PRZESZŁOŚCI: Nie obliczaj monthly_need =====
         if offset < 0:
-            # Przeszłość - nie pokazujemy danych (nie da się dokładnie odtworzyć)
-            continue  # Pomijamy ten cel w sumowaniu monthly_need
-        # =====================================================
+            continue
         
         remaining = target - current
         if remaining > 0:
             cycles_left = 1
-            check_offset = offset  # Start od wybranego okresu
+            check_offset = offset
             while True:
                 _, cycle_end = utils.get_billing_period(db, check_offset)
                 if cycle_end >= g.deadline:
@@ -95,12 +117,10 @@ def get_dashboard_data(db: Session, offset: int):
                 actual_need = 0
             goals_monthly_need += actual_need
 
-    # ===== Jeśli przeszłość, ustaw na null =====
     if offset < 0:
         goals_monthly_need = None
-    # ==========================================
 
-    # 6. Ostatnie transakcje
+    # 7. Ostatnie transakcje
     recent = db.query(models.Transaction).options(
         joinedload(models.Transaction.category),
         joinedload(models.Transaction.loan)
@@ -132,6 +152,7 @@ def get_dashboard_data(db: Session, offset: int):
             "loan_id": t.loan_id
         })
 
+    # RETURN jest POZA pętlą for (4 spacje wcięcia)
     return {
         "total_balance": total_balance,
         "disposable_balance": disposable_balance,
@@ -143,7 +164,7 @@ def get_dashboard_data(db: Session, offset: int):
         "monthly_income_forecast": inc_realized + inc_planned,
         "monthly_expenses_realized": exp_realized,
         "monthly_expenses_forecast": exp_realized + exp_planned,
-        "goals_monthly_need": goals_monthly_need,  # Może być null dla przeszłości
+        "goals_monthly_need": goals_monthly_need,
         "goals_total_saved": goals_total_saved,
         "recent_transactions": tx_list,
         "period_start": str(start_date),
