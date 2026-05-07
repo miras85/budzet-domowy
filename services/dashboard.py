@@ -20,12 +20,57 @@ def get_dashboard_data(db: Session, offset: int):
     raw_debt = db.query(func.sum(models.Loan.remaining_amount)).scalar()
     total_debt = float(raw_debt) if raw_debt is not None else 0.0
     
-    # 2. Przychody i Wydatki
-    inc_realized = get_sum((models.Transaction.type == 'income') & (models.Transaction.status == 'zrealizowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
-    inc_planned = get_sum((models.Transaction.type == 'income') & (models.Transaction.status == 'planowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
-    
-    exp_realized = get_sum((models.Transaction.type == 'expense') & (models.Transaction.status == 'zrealizowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
-    exp_planned = get_sum((models.Transaction.type == 'expense') & (models.Transaction.status == 'planowana') & (models.Transaction.date >= start_date) & (models.Transaction.date <= end_date))
+    # 2. Przychody i Wydatki (Realizowane i Planowane)
+
+    # Pobierz ID kont ROR (nie-oszczędnościowych):
+    ror_account_ids = [
+        acc.id for acc in
+        db.query(models.Account).filter(models.Account.is_savings == False).all()
+    ]
+
+    # Zrealizowane - wszystkie konta (do statystyk):
+    inc_realized = get_sum(
+        (models.Transaction.type == 'income') &
+        (models.Transaction.status == 'zrealizowana') &
+        (models.Transaction.date >= start_date) &
+        (models.Transaction.date <= end_date)
+    )
+    exp_realized = get_sum(
+        (models.Transaction.type == 'expense') &
+        (models.Transaction.status == 'zrealizowana') &
+        (models.Transaction.date >= start_date) &
+        (models.Transaction.date <= end_date)
+    )
+
+    # Planowane - TYLKO konta ROR (do prognozy ROR):
+    inc_planned = get_sum(
+        (models.Transaction.type == 'income') &
+        (models.Transaction.status == 'planowana') &
+        (models.Transaction.date >= start_date) &
+        (models.Transaction.date <= end_date) &
+        (models.Transaction.account_id.in_(ror_account_ids))
+    )
+    exp_planned = get_sum(
+        (models.Transaction.type == 'expense') &
+        (models.Transaction.status == 'planowana') &
+        (models.Transaction.date >= start_date) &
+        (models.Transaction.date <= end_date) &
+        (models.Transaction.account_id.in_(ror_account_ids))
+    )
+
+    # Planowane na prognozę wyświetlaną użytkownikowi (wszystkie konta):
+    inc_planned_all = get_sum(
+        (models.Transaction.type == 'income') &
+        (models.Transaction.status == 'planowana') &
+        (models.Transaction.date >= start_date) &
+        (models.Transaction.date <= end_date)
+    )
+    exp_planned_all = get_sum(
+        (models.Transaction.type == 'expense') &
+        (models.Transaction.status == 'planowana') &
+        (models.Transaction.date >= start_date) &
+        (models.Transaction.date <= end_date)
+    )
 
     # 3. Planowane transfery Z kont ROR → Oszczędności
     planned_transfers = db.query(models.Transaction).filter(
@@ -161,9 +206,9 @@ def get_dashboard_data(db: Session, offset: int):
         "savings_rate": savings_rate,
         "total_debt": total_debt,
         "monthly_income_realized": inc_realized,
-        "monthly_income_forecast": inc_realized + inc_planned,
+        "monthly_income_forecast": inc_realized + inc_planned_all,
         "monthly_expenses_realized": exp_realized,
-        "monthly_expenses_forecast": exp_realized + exp_planned,
+        "monthly_expenses_forecast": exp_realized + exp_planned_all,
         "goals_monthly_need": goals_monthly_need,
         "goals_total_saved": goals_total_saved,
         "recent_transactions": tx_list,
