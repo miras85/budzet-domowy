@@ -40,7 +40,7 @@ log "💾 Tworzę dump bazy: $DB_NAME"
 
 # Prompt o hasło (dla ręcznego uruchomienia)
 # W crontab użyj: mysql_config_editor set --login-path=backup --user=domowybudzet --password
-/Applications/XAMPP/bin/mysqldump --defaults-extra-file="$HOME/.my.cnf.backup" "$DB_NAME" > "$BACKUP_FILE" 2>> "$LOG_FILE"
+/Applications/XAMPP/bin/mysqldump --defaults-extra-file="$HOME/.my.cnf.backup" --protocol=TCP --host=127.0.0.1 --port=3306 --no-tablespaces "$DB_NAME" > "$BACKUP_FILE" 2>> "$LOG_FILE"
 
 # Sprawdź czy się udało
 if [ $? -eq 0 ]; then
