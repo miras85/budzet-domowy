@@ -16,17 +16,19 @@ async def preview_import(file: UploadFile = File(...), db: Session = Depends(dat
 
 @router.post("/import/confirm")
 def confirm_import(data: schemas.ImportConfirm, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     return bank_import.save_imported_transactions(db, data.account_id, data.transactions)
 
 # --- DASHBOARD & STATS ---
 @router.get("/dashboard")
 def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    data = dashboard.get_dashboard_data(db, offset, current_user.id)
+    owner_id = database.get_data_owner_id(current_user, db)
+    data = dashboard.get_dashboard_data(db, offset, owner_id)
     for tx in data["recent_transactions"]:
         if tx["category_name"] and tx["category_name"] != "-" and tx["category_name"] != "Transfer":
             cat = db.query(models.Category).filter(
                 models.Category.name == tx["category_name"],
-                models.Category.user_id == current_user.id
+                models.Category.user_id == owner_id
             ).first()
             if cat:
                 tx["category_icon"] = cat.icon_name
@@ -35,22 +37,26 @@ def get_dashboard(offset: int = 0, db: Session = Depends(database.get_db), curre
 
 @router.get("/stats/trend")
 def get_trend(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    return dashboard.get_trend_data(db, current_user.id)
+    owner_id = database.get_data_owner_id(current_user, db)
+    return dashboard.get_trend_data(db, owner_id)
 
 # --- TRANSAKCJE ---
 @router.post("/transactions")
 def add_transaction(tx: schemas.TransactionCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    transaction.create_transaction(db, tx, current_user.id)
+    owner_id = database.get_data_owner_id(current_user, db)
+    transaction.create_transaction(db, tx, owner_id)
     return {"status": "added"}
 
 @router.put("/transactions/{tx_id}")
 def update_transaction(tx_id: int, tx_data: schemas.TransactionCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    transaction.update_transaction(db, tx_id, tx_data, current_user.id)
+    owner_id = database.get_data_owner_id(current_user, db)
+    transaction.update_transaction(db, tx_id, tx_data, owner_id)
     return {"status": "updated"}
 
 @router.delete("/transactions/{tx_id}")
 def delete_transaction(tx_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    transaction.delete_transaction(db, tx_id, current_user.id)
+    owner_id = database.get_data_owner_id(current_user, db)
+    transaction.delete_transaction(db, tx_id, owner_id)
     return {"status": "deleted"}
 
 @router.get("/transactions/search")
@@ -60,12 +66,13 @@ def search_transactions(
     min_amount: Optional[float] = None, max_amount: Optional[float] = None,
     db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)
 ):
-    result = transaction.search_transactions(db, q, date_from, date_to, category_id, account_id, type, min_amount, max_amount, current_user.id)
+    owner_id = database.get_data_owner_id(current_user, db)
+    result = transaction.search_transactions(db, q, date_from, date_to, category_id, account_id, type, min_amount, max_amount, owner_id)
     for tx in result["transactions"]:
         if tx["category"] and tx["category"] != "-" and tx["category"] != "Transfer":
             cat = db.query(models.Category).filter(
                 models.Category.name == tx["category"],
-                models.Category.user_id == current_user.id
+                models.Category.user_id == owner_id
             ).first()
             if cat:
                 tx["category_icon"] = cat.icon_name
@@ -75,9 +82,10 @@ def search_transactions(
 # --- CELE ---
 @router.get("/goals")
 def get_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     goals = db.query(models.Goal).filter(
         models.Goal.is_archived == False,
-        models.Goal.user_id == current_user.id
+        models.Goal.user_id == owner_id
     ).all()
     start_date, end_date = utils.get_billing_period(db, 0)
     result = []
@@ -115,21 +123,23 @@ def get_goals(db: Session = Depends(database.get_db), current_user: models.User 
 
 @router.post("/goals")
 def create_goal(goal: schemas.GoalCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     acc = db.query(models.Account).filter(
         models.Account.id == goal.account_id,
-        models.Account.user_id == current_user.id
+        models.Account.user_id == owner_id
     ).first()
     if not acc or not acc.is_savings:
         raise HTTPException(status_code=400, detail="Cel musi być przypisany do konta oszczędnościowego")
-    db.add(models.Goal(**goal.dict(), user_id=current_user.id))
+    db.add(models.Goal(**goal.dict(), user_id=owner_id))
     db.commit()
     return {"status": "ok"}
 
 @router.post("/goals/{goal_id}/fund")
 def fund_goal(goal_id: int, fund: schemas.GoalFund, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     goal = db.query(models.Goal).filter(
         models.Goal.id == goal_id,
-        models.Goal.user_id == current_user.id
+        models.Goal.user_id == owner_id
     ).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Cel nie istnieje")
@@ -138,9 +148,10 @@ def fund_goal(goal_id: int, fund: schemas.GoalFund, db: Session = Depends(databa
 
 @router.post("/goals/{goal_id}/withdraw")
 def withdraw_goal_funds(goal_id: int, withdraw: schemas.GoalWithdraw, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     goal = db.query(models.Goal).filter(
         models.Goal.id == goal_id,
-        models.Goal.user_id == current_user.id
+        models.Goal.user_id == owner_id
     ).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Cel nie istnieje")
@@ -149,9 +160,10 @@ def withdraw_goal_funds(goal_id: int, withdraw: schemas.GoalWithdraw, db: Sessio
 
 @router.put("/goals/{goal_id}")
 def update_goal(goal_id: int, goal_data: schemas.GoalUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db_goal = db.query(models.Goal).filter(
         models.Goal.id == goal_id,
-        models.Goal.user_id == current_user.id
+        models.Goal.user_id == owner_id
     ).first()
     if not db_goal:
         raise HTTPException(status_code=404, detail="Cel nie istnieje")
@@ -164,9 +176,10 @@ def update_goal(goal_id: int, goal_data: schemas.GoalUpdate, db: Session = Depen
 
 @router.post("/goals/{goal_id}/transfer")
 def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     goal = db.query(models.Goal).filter(
         models.Goal.id == goal_id,
-        models.Goal.user_id == current_user.id
+        models.Goal.user_id == owner_id
     ).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Cel nie istnieje")
@@ -175,10 +188,11 @@ def transfer_goal_funds(goal_id: int, transfer: schemas.GoalTransfer, db: Sessio
 
 @router.delete("/goals/{goal_id}")
 def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     try:
         goal = db.query(models.Goal).filter(
             models.Goal.id == goal_id,
-            models.Goal.user_id == current_user.id
+            models.Goal.user_id == owner_id
         ).first()
         if not goal:
             raise HTTPException(status_code=404, detail="Cel nie istnieje")
@@ -194,10 +208,11 @@ def delete_goal(goal_id: int, db: Session = Depends(database.get_db), current_us
 
 @router.post("/goals/{goal_id}/archive")
 def archive_goal(goal_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     try:
         goal = db.query(models.Goal).filter(
             models.Goal.id == goal_id,
-            models.Goal.user_id == current_user.id
+            models.Goal.user_id == owner_id
         ).first()
         if not goal:
             raise HTTPException(status_code=404, detail="Cel nie istnieje")
@@ -210,9 +225,10 @@ def archive_goal(goal_id: int, db: Session = Depends(database.get_db), current_u
 
 @router.get("/goals/archived")
 def get_archived_goals(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     goals = db.query(models.Goal).filter(
         models.Goal.is_archived == True,
-        models.Goal.user_id == current_user.id
+        models.Goal.user_id == owner_id
     ).all()
     return [{"id": g.id, "name": g.name, "target_amount": float(g.target_amount),
              "current_amount": float(g.current_amount), "deadline": str(g.deadline),
@@ -221,8 +237,9 @@ def get_archived_goals(db: Session = Depends(database.get_db), current_user: mod
 # --- LOANS ---
 @router.get("/loans")
 def get_loans(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     loans = db.query(models.Loan).filter(
-        models.Loan.user_id == current_user.id
+        models.Loan.user_id == owner_id
     ).order_by(models.Loan.next_payment_date).all()
     today = date.today()
     start_date, end_date = utils.get_billing_period(db, 0)
@@ -263,15 +280,17 @@ def get_loans(db: Session = Depends(database.get_db), current_user: models.User 
 
 @router.post("/loans")
 def create_loan(loan: schemas.LoanCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    db_loan = models.Loan(**loan.dict(), user_id=current_user.id)
+    owner_id = database.get_data_owner_id(current_user, db)
+    db_loan = models.Loan(**loan.dict(), user_id=owner_id)
     db.add(db_loan); db.commit()
     return {"status": "ok"}
 
 @router.put("/loans/{loan_id}")
 def update_loan(loan_id: int, loan: schemas.LoanUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db_loan = db.query(models.Loan).filter(
         models.Loan.id == loan_id,
-        models.Loan.user_id == current_user.id
+        models.Loan.user_id == owner_id
     ).first()
     if not db_loan: raise HTTPException(status_code=404)
     db_loan.name = loan.name; db_loan.total_amount = loan.total_amount
@@ -282,30 +301,33 @@ def update_loan(loan_id: int, loan: schemas.LoanUpdate, db: Session = Depends(da
 # --- KATEGORIE ---
 @router.get("/categories")
 def get_categories(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     return db.query(models.Category).filter(
-        models.Category.user_id == current_user.id
+        models.Category.user_id == owner_id
     ).order_by(models.Category.name).all()
 
 @router.post("/categories")
 def create_category(cat: schemas.CategoryCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     if db.query(models.Category).filter(
         models.Category.name == cat.name,
-        models.Category.user_id == current_user.id
+        models.Category.user_id == owner_id
     ).first():
         raise HTTPException(status_code=400, detail="Kategoria istnieje")
     db.add(models.Category(
         name=cat.name, monthly_limit=cat.monthly_limit,
         icon_name=cat.icon, color=cat.color,
-        user_id=current_user.id
+        user_id=owner_id
     ))
     db.commit()
     return {"status": "ok"}
 
 @router.put("/categories/{cat_id}")
 def update_category(cat_id: int, cat: schemas.CategoryCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db_cat = db.query(models.Category).filter(
         models.Category.id == cat_id,
-        models.Category.user_id == current_user.id
+        models.Category.user_id == owner_id
     ).first()
     if not db_cat: raise HTTPException(status_code=404)
     db_cat.name = cat.name; db_cat.monthly_limit = cat.monthly_limit
@@ -316,9 +338,10 @@ def update_category(cat_id: int, cat: schemas.CategoryCreate, db: Session = Depe
 
 @router.delete("/categories/{cat_id}")
 def delete_category(cat_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db.query(models.Category).filter(
         models.Category.id == cat_id,
-        models.Category.user_id == current_user.id
+        models.Category.user_id == owner_id
     ).delete()
     db.commit()
     return {"status": "deleted"}
@@ -326,8 +349,9 @@ def delete_category(cat_id: int, db: Session = Depends(database.get_db), current
 # --- KONTA ---
 @router.get("/accounts")
 def get_accounts(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     accounts = db.query(models.Account).filter(
-        models.Account.user_id == current_user.id
+        models.Account.user_id == owner_id
     ).all()
     result = []
     for acc in accounts:
@@ -335,7 +359,7 @@ def get_accounts(db: Session = Depends(database.get_db), current_user: models.Us
         if acc.is_savings:
             res_val = db.query(func.sum(models.Goal.current_amount)).filter(
                 models.Goal.account_id == acc.id,
-                models.Goal.user_id == current_user.id
+                models.Goal.user_id == owner_id
             ).scalar()
             reserved = float(res_val) if res_val else 0.0
         result.append({"id": acc.id, "name": acc.name, "type": acc.type,
@@ -345,19 +369,21 @@ def get_accounts(db: Session = Depends(database.get_db), current_user: models.Us
 
 @router.post("/accounts")
 def create_account(acc: schemas.AccountUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db_acc = models.Account(
         name=acc.name, type=acc.type,
         balance=acc.balance, is_savings=acc.is_savings,
-        user_id=current_user.id
+        user_id=owner_id
     )
     db.add(db_acc); db.commit()
     return {"status": "ok"}
 
 @router.put("/accounts/{account_id}")
 def update_account(account_id: int, acc: schemas.AccountUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db_acc = db.query(models.Account).filter(
         models.Account.id == account_id,
-        models.Account.user_id == current_user.id
+        models.Account.user_id == owner_id
     ).first()
     if not db_acc: raise HTTPException(status_code=404)
     db_acc.name = acc.name; db_acc.type = acc.type
@@ -367,12 +393,13 @@ def update_account(account_id: int, acc: schemas.AccountUpdate, db: Session = De
 
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db.query(models.Transaction).filter(
         models.Transaction.account_id == account_id
     ).delete()
     db.query(models.Account).filter(
         models.Account.id == account_id,
-        models.Account.user_id == current_user.id
+        models.Account.user_id == owner_id
     ).delete()
     db.commit()
     return {"status": "deleted"}
@@ -407,9 +434,10 @@ def delete_payday_override(id: int, db: Session = Depends(database.get_db), curr
 # --- TREND KATEGORII ---
 @router.get("/categories/{cat_id}/trend")
 def get_category_trend(cat_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     category = db.query(models.Category).filter(
         models.Category.id == cat_id,
-        models.Category.user_id == current_user.id
+        models.Category.user_id == owner_id
     ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Kategoria nie istnieje")
