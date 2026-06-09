@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DECIMAL, Boolean
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DECIMAL, Boolean, DateTime
+from datetime import datetime
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import date
@@ -8,6 +9,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True)
     hashed_password = Column(String(255))
+    role = Column(String(20), default="admin", nullable=False)
+    invited_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     # Relationships
     accounts = relationship("Account", back_populates="user")
@@ -114,3 +117,23 @@ class RecurringTransaction(Base):
     user = relationship("User", back_populates="recurring_transactions")
     category = relationship("Category")
     account = relationship("Account")
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(64), unique=True, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    used = Column(Boolean, default=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    creator = relationship("User", foreign_keys=[created_by])
+
+class UserDataAccess(Base):
+    __tablename__ = "user_data_access"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+    owner = relationship("User", foreign_keys=[owner_id])
