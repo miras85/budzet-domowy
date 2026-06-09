@@ -8,24 +8,26 @@ router = APIRouter(prefix="/api/recurring", tags=["Recurring"])
 
 @router.get("")
 def get_recurring(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     return db.query(models.RecurringTransaction).options(
         joinedload(models.RecurringTransaction.category)
     ).filter(
-        models.RecurringTransaction.user_id == current_user.id
+        models.RecurringTransaction.user_id == owner_id
     ).all()
 
 @router.post("")
 def create_recurring(rec: schemas.RecurringCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     cat = db.query(models.Category).filter(
         func.lower(models.Category.name) == rec.category_name.lower().strip(),
-        models.Category.user_id == current_user.id
+        models.Category.user_id == owner_id
     ).first()
     if not cat:
         cat = models.Category(
             name=rec.category_name,
             icon_name='tag',
             color='#94a3b8',
-            user_id=current_user.id
+            user_id=owner_id
         )
         db.add(cat)
         db.commit()
@@ -36,7 +38,7 @@ def create_recurring(rec: schemas.RecurringCreate, db: Session = Depends(databas
         day_of_month=rec.day_of_month,
         category_id=cat.id,
         account_id=rec.account_id,
-        user_id=current_user.id
+        user_id=owner_id
     )
     db.add(new_rec)
     db.commit()
@@ -44,23 +46,24 @@ def create_recurring(rec: schemas.RecurringCreate, db: Session = Depends(databas
 
 @router.put("/{id}")
 def update_recurring(id: int, rec: schemas.RecurringCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db_rec = db.query(models.RecurringTransaction).filter(
         models.RecurringTransaction.id == id,
-        models.RecurringTransaction.user_id == current_user.id
+        models.RecurringTransaction.user_id == owner_id
     ).first()
     if not db_rec:
         raise HTTPException(status_code=404)
 
     cat = db.query(models.Category).filter(
         func.lower(models.Category.name) == rec.category_name.lower().strip(),
-        models.Category.user_id == current_user.id
+        models.Category.user_id == owner_id
     ).first()
     if not cat:
         cat = models.Category(
             name=rec.category_name,
             icon_name='tag',
             color='#94a3b8',
-            user_id=current_user.id
+            user_id=owner_id
         )
         db.add(cat)
         db.flush()
@@ -75,9 +78,10 @@ def update_recurring(id: int, rec: schemas.RecurringCreate, db: Session = Depend
 
 @router.delete("/{id}")
 def delete_recurring(id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db.query(models.RecurringTransaction).filter(
         models.RecurringTransaction.id == id,
-        models.RecurringTransaction.user_id == current_user.id
+        models.RecurringTransaction.user_id == owner_id
     ).delete()
     db.commit()
     return {"status": "deleted"}
@@ -86,13 +90,13 @@ def delete_recurring(id: int, db: Session = Depends(database.get_db), current_us
 def check_due_payments(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     """Sprawdza płatności wymagalne w OBECNYM CYKLU ROZLICZENIOWYM."""
     import calendar
-
+    owner_id = database.get_data_owner_id(current_user, db)
     today = date.today()
     start_date, end_date = utils.get_billing_period(db, 0)
 
     all_recs = db.query(models.RecurringTransaction).filter(
         models.RecurringTransaction.is_active == True,
-        models.RecurringTransaction.user_id == current_user.id
+        models.RecurringTransaction.user_id == owner_id
     ).all()
 
     due = []
@@ -143,9 +147,10 @@ def check_due_payments(db: Session = Depends(database.get_db), current_user: mod
 
 @router.post("/{id}/process")
 def process_recurring(id: int, data: schemas.RecurringExecute, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     rec = db.query(models.RecurringTransaction).filter(
         models.RecurringTransaction.id == id,
-        models.RecurringTransaction.user_id == current_user.id
+        models.RecurringTransaction.user_id == owner_id
     ).first()
     if not rec:
         raise HTTPException(status_code=404)
@@ -166,9 +171,10 @@ def process_recurring(id: int, data: schemas.RecurringExecute, db: Session = Dep
 
 @router.post("/{id}/skip")
 def skip_recurring(id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     rec = db.query(models.RecurringTransaction).filter(
         models.RecurringTransaction.id == id,
-        models.RecurringTransaction.user_id == current_user.id
+        models.RecurringTransaction.user_id == owner_id
     ).first()
     if not rec:
         raise HTTPException(status_code=404)
