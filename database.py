@@ -7,15 +7,18 @@ from dotenv import load_dotenv
 # Ładujemy zmienne z pliku .env
 load_dotenv()
 
-# Pobieramy adres z pliku .env (lub używamy domyślnego, jeśli brak pliku)
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "mysql+mysqlconnector://root:@localhost:3306/domowy_budzet")
+# Pobieramy adres z pliku .env
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "mysql+mysqlconnector://root:@localhost:3306/domowy_budzet"
+)
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    pool_pre_ping=True,        # Sprawdza czy połączenie żyje przed użyciem
-    pool_recycle=3600,         # Odświeża połączenia co 1h (przed MySQL timeout)
-    pool_size=5,               # Max 5 połączeń w puli
-    max_overflow=10            # Max 10 dodatkowych połączeń
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    pool_size=5,
+    max_overflow=10
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -36,7 +39,10 @@ import models
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: SessionLocal = Depends(get_db)):
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: SessionLocal = Depends(get_db)
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Nieprawidłowe dane logowania",
@@ -49,7 +55,35 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: SessionLocal = Dep
             raise credentials_exception
     except auth.JWTError:
         raise credentials_exception
-    user = db.query(models.User).filter(models.User.username == username).first()
+    user = db.query(models.User).filter(
+        models.User.username == username
+    ).first()
     if user is None:
         raise credentials_exception
     return user
+
+
+def get_data_owner_id(
+    current_user: models.User,
+    db: SessionLocal
+) -> int:
+    """
+    Zwraca owner_id dla zapytań do bazy:
+    - Admin → widzi swoje dane (current_user.id)
+    - Viewer → widzi dane admina który go zaprosił (owner_id z user_data_access)
+    """
+    if current_user.role == "admin":
+        return current_user.id
+
+    # Viewer — znajdź właściciela danych
+    access = db.query(models.UserDataAccess).filter(
+        models.UserDataAccess.user_id == current_user.id
+    ).first()
+
+    if not access:
+        raise HTTPException(
+            status_code=403,
+            detail="Brak dostępu do danych"
+        )
+
+    return access.owner_id
