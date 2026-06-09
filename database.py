@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 # Ładujemy zmienne z pliku .env
 load_dotenv()
 
-# Pobieramy adres z pliku .env
 SQLALCHEMY_DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "mysql+mysqlconnector://root:@localhost:3306/domowy_budzet"
@@ -35,7 +34,6 @@ def get_db():
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import auth
-import models
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -43,6 +41,9 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: SessionLocal = Depends(get_db)
 ):
+    # Import tutaj żeby uniknąć circular import
+    import models
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Nieprawidłowe dane logowania",
@@ -64,7 +65,7 @@ def get_current_user(
 
 
 def get_data_owner_id(
-    current_user: models.User,
+    current_user,
     db: SessionLocal
 ) -> int:
     """
@@ -72,6 +73,9 @@ def get_data_owner_id(
     - Admin → widzi swoje dane (current_user.id)
     - Viewer → widzi dane admina który go zaprosił (owner_id z user_data_access)
     """
+    # Import tutaj żeby uniknąć circular import
+    import models
+
     if current_user.role == "admin":
         return current_user.id
 
