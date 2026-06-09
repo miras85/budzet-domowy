@@ -3,6 +3,19 @@ from sqlalchemy.orm import relationship
 from database import Base
 from datetime import date
 
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, index=True)
+    hashed_password = Column(String(255))
+
+    # Relationships
+    accounts = relationship("Account", back_populates="user")
+    categories = relationship("Category", back_populates="user")
+    loans = relationship("Loan", back_populates="user")
+    goals = relationship("Goal", back_populates="user")
+    recurring_transactions = relationship("RecurringTransaction", back_populates="user")
+
 class Account(Base):
     __tablename__ = "accounts"
     id = Column(Integer, primary_key=True, index=True)
@@ -10,16 +23,20 @@ class Account(Base):
     type = Column(String(50))
     balance = Column(DECIMAL(10, 2), default=0.0)
     is_savings = Column(Boolean, default=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    user = relationship("User", back_populates="accounts")
 
 class Category(Base):
     __tablename__ = "categories"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True)
+    name = Column(String(100))
     monthly_limit = Column(DECIMAL(10, 2), default=0.0)
-    # --- NOWE POLA ---
     icon_name = Column(String(50), default="tag")
     color = Column(String(20), default="#94a3b8")
-    # -----------------
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    user = relationship("User", back_populates="categories")
 
 class Loan(Base):
     __tablename__ = "loans"
@@ -29,6 +46,9 @@ class Loan(Base):
     remaining_amount = Column(DECIMAL(10, 2))
     monthly_payment = Column(DECIMAL(10, 2))
     next_payment_date = Column(Date)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    user = relationship("User", back_populates="loans")
 
 class Goal(Base):
     __tablename__ = "goals"
@@ -39,6 +59,9 @@ class Goal(Base):
     deadline = Column(Date)
     is_archived = Column(Boolean, default=False)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    user = relationship("User", back_populates="goals")
 
 class GoalContribution(Base):
     __tablename__ = "goal_contributions"
@@ -46,7 +69,7 @@ class GoalContribution(Base):
     goal_id = Column(Integer, ForeignKey("goals.id"))
     amount = Column(DECIMAL(10, 2))
     date = Column(Date, default=date.today)
-    
+
     goal = relationship("Goal")
 
 class Transaction(Base):
@@ -57,7 +80,7 @@ class Transaction(Base):
     date = Column(Date)
     type = Column(String(20))
     status = Column(String(20), default="zrealizowana")
-    
+
     account_id = Column(Integer, ForeignKey("accounts.id"))
     target_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
@@ -75,12 +98,6 @@ class PaydayOverride(Base):
     month = Column(Integer)
     day = Column(Integer)
 
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True)
-    hashed_password = Column(String(255))
-
 class RecurringTransaction(Base):
     __tablename__ = "recurring_transactions"
     id = Column(Integer, primary_key=True, index=True)
@@ -89,9 +106,11 @@ class RecurringTransaction(Base):
     day_of_month = Column(Integer)
     last_run_date = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
-    
+
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
-    
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    user = relationship("User", back_populates="recurring_transactions")
     category = relationship("Category")
     account = relationship("Account")
