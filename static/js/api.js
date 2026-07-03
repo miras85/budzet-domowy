@@ -68,7 +68,6 @@ export const auth = {
             return await res.json();
         }
     };
-};
 
 export const finance = {
     async getDashboard(offset) { return (await authFetch(`/api/dashboard?offset=${offset}`)).json(); },
