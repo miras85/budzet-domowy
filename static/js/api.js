@@ -53,12 +53,21 @@ export const auth = {
         });
     },
     async register(username, password) {
-        return authFetch('/api/users', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ username, password })
-        });
-    }
+            return authFetch('/api/users', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username, password })
+            });
+        },
+        async generateInvite() {
+            const res = await authFetch('/api/invite', { method: 'POST' });
+            return await res.json();
+        },
+        async getMe() {
+            const res = await authFetch('/api/users/me');
+            return await res.json();
+        }
+    };
 };
 
 export const finance = {

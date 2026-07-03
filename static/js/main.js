@@ -70,7 +70,7 @@ const app = createApp({
             loanAlertsRecentlyDismissed: false,
             
             goals: [], overrides: [], recurringList: [], duePayments: [],
-            security: { oldPassword: '', newPassword: '', newUsername: '', newUserPass: '' },
+            security: { oldPassword: '', newPassword: '', newUsername: '', newUserPass: '', inviteLink: '', inviteExpires: '' },
             
             // Nowe obiekty
             newTx: { description: '', amount: '', type: 'expense', account_id: null, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] },
@@ -598,7 +598,16 @@ const app = createApp({
         async addOverride() { await API.settings.addOverride(this.newOverride); this.fetchOverrides(); this.notify('success', 'Dodano'); },
         async deleteOverride(id) { if(!confirm("Usunąć?")) return; await API.settings.deleteOverride(id); this.fetchOverrides(); this.notify('info', 'Usunięto'); },
         async changePassword() { if(!this.security.oldPassword || !this.security.newPassword) return this.notify('error', "Wpisz hasła"); try { await API.auth.changePassword(this.security.oldPassword, this.security.newPassword); this.notify('success', "Zmieniono"); this.security.oldPassword = ''; this.security.newPassword = ''; } catch(e) { this.notify('error', "Błąd"); } },
-        async registerUser() { if(!this.security.newUsername || !this.security.newUserPass) return this.notify('error', "Wpisz dane"); try { await API.auth.register(this.security.newUsername, this.security.newUserPass); this.notify('success', "Dodano"); this.security.newUsername = ''; this.security.newUserPass = ''; } catch(e) { this.notify('error', "Błąd"); } },
+        async registerUser() {
+            try {
+                const result = await API.auth.generateInvite();
+                this.security.inviteLink = `https://budzet-domowy.pl/register?token=${result.token}`;
+                this.security.inviteExpires = result.expires_at;
+                this.notify('success', "Link zaproszenia wygenerowany!");
+            } catch(e) {
+                this.notify('error', "Błąd generowania zaproszenia");
+            }
+        },
 
         openSearch() {
             this.showSearch = true;
