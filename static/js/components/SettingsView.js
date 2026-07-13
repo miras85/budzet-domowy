@@ -1,7 +1,7 @@
 import { ICON_PATHS, COLORS } from '../icons.js?v=51';
 
 export default {
-    props: ['categories', 'overrides', 'newCategoryName', 'newOverride', 'security'],
+    props: ['categories', 'overrides', 'newCategoryName', 'newOverride', 'security', 'userRole'],
     emits: ['update:newCategoryName', 'add-category', 'update-category', 'delete-category', 'add-override', 'delete-override', 'change-password', 'register-user'],
     data() {
         return {
@@ -15,15 +15,13 @@ export default {
         handleSubmit() {
             if(!this.formCat.name) return;
             if (this.formCat.id) {
-                // Znajdź oryginalną kategorię żeby zachować limit
                 const originalCat = this.categories.find(c => c.id === this.formCat.id);
-                
                 this.$emit('update-category', {
                     id: this.formCat.id,
                     name: this.formCat.name,
                     icon_name: this.formCat.icon,
                     color: this.formCat.color,
-                    limit: originalCat ? originalCat.monthly_limit : 0  // ZACHOWAJ istniejący limit!
+                    limit: originalCat ? originalCat.monthly_limit : 0
                 });
             } else {
                 this.$emit('add-category', {
@@ -35,6 +33,7 @@ export default {
             this.resetForm();
         },
         editCategory(cat) {
+            if (this.userRole !== 'admin') return;
             this.formCat = {
                 id: cat.id,
                 name: cat.name,
@@ -52,12 +51,14 @@ export default {
     template: `
     <div class="px-6">
         <h2 class="text-xl font-bold text-white mb-6 mt-4">Ustawienia</h2>
-        
+
+        <!-- KATEGORIE — tylko admin może edytować -->
         <div class="glass-panel p-5 rounded-2xl mb-6">
             <h3 class="font-bold text-slate-200 mb-4">Kategorie</h3>
-            <p class="text-xs text-slate-400 mb-2">Kliknij kategorię poniżej, aby ją edytować.</p>
-            
-            <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700 mb-4 transition-all" :class="formCat.id ? 'border-blue-500 ring-1 ring-blue-500/50' : ''">
+            <p v-if="userRole === 'admin'" class="text-xs text-slate-400 mb-2">Kliknij kategorię poniżej, aby ją edytować.</p>
+            <p v-else class="text-xs text-slate-500 mb-2">👁️ Tryb podglądu — tylko odczyt</p>
+
+            <div v-if="userRole === 'admin'" class="bg-slate-800/50 p-3 rounded-xl border border-slate-700 mb-4 transition-all" :class="formCat.id ? 'border-blue-500 ring-1 ring-blue-500/50' : ''">
                 <div class="flex gap-2 mb-3">
                     <button @click="showIconPicker = !showIconPicker" class="w-12 h-12 rounded-xl flex items-center justify-center border border-slate-600 transition-all" :style="{ backgroundColor: formCat.color + '20', borderColor: formCat.color }">
                         <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" class="w-6 h-6" :style="{ color: formCat.color }">
@@ -68,7 +69,6 @@ export default {
                     <button @click="handleSubmit" class="w-12 rounded-xl font-bold text-xl shadow-lg transition-colors flex items-center justify-center" :class="formCat.id ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'">{{ formCat.id ? '✓' : '+' }}</button>
                     <button v-if="formCat.id" @click="resetForm" class="w-12 rounded-xl font-bold text-xl bg-slate-700 text-slate-400">✕</button>
                 </div>
-
                 <div v-if="showIconPicker" class="animate-fade-in border-t border-slate-700 pt-3">
                     <div class="text-[10px] text-slate-400 uppercase font-bold mb-2">Wybierz kolor</div>
                     <div class="flex flex-wrap gap-2 mb-4">
@@ -86,17 +86,70 @@ export default {
             </div>
 
             <div class="flex flex-wrap gap-2">
-                <div v-for="cat in categories" :key="cat.id" @click="editCategory(cat)" class="pl-2 pr-2 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer active:scale-95 hover:brightness-110" :class="formCat.id === cat.id ? 'ring-2 ring-white' : ''" :style="{ backgroundColor: (cat.color || '#64748b') + '15', borderColor: (cat.color || '#64748b') + '30', color: (cat.color || '#64748b') }">
+                <div v-for="cat in categories" :key="cat.id"
+                     @click="editCategory(cat)"
+                     class="pl-2 pr-2 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all"
+                     :class="[formCat.id === cat.id ? 'ring-2 ring-white' : '', userRole === 'admin' ? 'cursor-pointer active:scale-95 hover:brightness-110' : 'cursor-default']"
+                     :style="{ backgroundColor: (cat.color || '#64748b') + '15', borderColor: (cat.color || '#64748b') + '30', color: (cat.color || '#64748b') }">
                     <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" class="w-4 h-4">
                         <path :d="iconPaths[cat.icon_name || 'tag'] || iconPaths['tag']" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     {{ cat.name }}
-                    <button @click.stop="$emit('delete-category', cat.id)" class="hover:text-white ml-1 p-1 rounded-full hover:bg-black/20">×</button>
+                    <button v-if="userRole === 'admin'" @click.stop="$emit('delete-category', cat.id)" class="hover:text-white ml-1 p-1 rounded-full hover:bg-black/20">×</button>
                 </div>
             </div>
         </div>
 
-        <div class="glass-panel p-5 rounded-2xl mb-6"><h3 class="font-bold text-slate-200 mb-4">Wyjątki Dnia Wypłaty</h3><div class="flex gap-2 mb-4"><input v-model="newOverride.year" type="number" placeholder="Rok" class="input-dark w-20 p-2 rounded-lg text-center"><select v-model="newOverride.month" class="input-dark flex-1 p-2 rounded-lg"><option v-for="m in 12" :value="m">{{ m }}</option></select><input v-model="newOverride.day" type="number" placeholder="Dzień" class="input-dark w-16 p-2 rounded-lg text-center"><button @click="$emit('add-override')" class="bg-blue-600 text-white px-4 rounded-lg font-bold">+</button></div><div class="space-y-2"><div v-for="ov in overrides" :key="ov.id" class="flex justify-between items-center bg-slate-800 p-3 rounded-lg"><div class="text-sm text-slate-200"><span class="font-bold">{{ ov.year }}-{{ String(ov.month).padStart(2, '0') }}</span>: Wypłata {{ ov.day }}-go</div><button @click="$emit('delete-override', ov.id)" class="text-red-400 text-xs font-bold">USUŃ</button></div></div></div>
-        <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-blue-500"><h3 class="font-bold text-slate-200 mb-4">Bezpieczeństwo</h3><div class="mb-6"><h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Zmień swoje hasło</h4><div class="space-y-2"><input v-model="security.oldPassword" type="password" placeholder="Stare hasło" class="input-dark w-full p-2 rounded-lg text-sm"><input v-model="security.newPassword" type="password" placeholder="Nowe hasło" class="input-dark w-full p-2 rounded-lg text-sm"><button @click="$emit('change-password')" class="w-full bg-slate-700 hover:bg-blue-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">Zatwierdź zmianę</button></div></div><div><h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Zaproś domownika</h4><p class="text-xs text-slate-400 mb-3">Wygeneruj jednorazowy link zaproszenia (ważny 48h)</p><button @click="$emit('register-user')" class="w-full bg-slate-700 hover:bg-green-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">🔗 Generuj link zaproszenia</button><div v-if="security.inviteLink" class="mt-3 p-3 bg-slate-800 rounded-lg"><p class="text-xs text-slate-400 mb-1">Link zaproszenia (skopiuj i wyślij):</p><p class="text-xs text-green-400 break-all font-mono">{{ security.inviteLink }}</p><p class="text-xs text-slate-500 mt-1">Wygasa: {{ security.inviteExpires }}</p></div></div></div>
+        <!-- WYJĄTKI DNIA WYPŁATY — tylko admin -->
+        <div v-if="userRole === 'admin'" class="glass-panel p-5 rounded-2xl mb-6">
+            <h3 class="font-bold text-slate-200 mb-4">Wyjątki Dnia Wypłaty</h3>
+            <div class="flex gap-2 mb-4">
+                <input v-model="newOverride.year" type="number" placeholder="Rok" class="input-dark w-20 p-2 rounded-lg text-center">
+                <select v-model="newOverride.month" class="input-dark flex-1 p-2 rounded-lg">
+                    <option v-for="m in 12" :value="m">{{ m }}</option>
+                </select>
+                <input v-model="newOverride.day" type="number" placeholder="Dzień" class="input-dark w-16 p-2 rounded-lg text-center">
+                <button @click="$emit('add-override')" class="bg-blue-600 text-white px-4 rounded-lg font-bold">+</button>
+            </div>
+            <div class="space-y-2">
+                <div v-for="ov in overrides" :key="ov.id" class="flex justify-between items-center bg-slate-800 p-3 rounded-lg">
+                    <div class="text-sm text-slate-200">
+                        <span class="font-bold">{{ ov.year }}-{{ String(ov.month).padStart(2, '0') }}</span>: Wypłata {{ ov.day }}-go
+                    </div>
+                    <button @click="$emit('delete-override', ov.id)" class="text-red-400 text-xs font-bold">USUŃ</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BEZPIECZEŃSTWO -->
+        <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-blue-500">
+            <h3 class="font-bold text-slate-200 mb-4">Bezpieczeństwo</h3>
+
+            <!-- Zmiana hasła — dla wszystkich -->
+            <div class="mb-6">
+                <h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Zmień swoje hasło</h4>
+                <div class="space-y-2">
+                    <input v-model="security.oldPassword" type="password" placeholder="Stare hasło" class="input-dark w-full p-2 rounded-lg text-sm">
+                    <input v-model="security.newPassword" type="password" placeholder="Nowe hasło" class="input-dark w-full p-2 rounded-lg text-sm">
+                    <button @click="$emit('change-password')" class="w-full bg-slate-700 hover:bg-blue-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">Zatwierdź zmianę</button>
+                </div>
+            </div>
+
+            <!-- Zaproszenie — tylko admin -->
+            <div v-if="userRole === 'admin'">
+                <h4 class="text-xs text-slate-400 uppercase font-bold mb-2">Zaproś domownika</h4>
+                <p class="text-xs text-slate-400 mb-3">Wygeneruj jednorazowy link zaproszenia (ważny 48h)</p>
+                <button @click="$emit('register-user')" class="w-full bg-slate-700 hover:bg-green-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">🔗 Generuj link zaproszenia</button>
+                <div v-if="security.inviteLink" class="mt-3 p-3 bg-slate-800 rounded-lg">
+                    <p class="text-xs text-slate-400 mb-1">Link zaproszenia (skopiuj i wyślij):</p>
+                    <p class="text-xs text-green-400 break-all font-mono">{{ security.inviteLink }}</p>
+                    <p class="text-xs text-slate-500 mt-1">Wygasa: {{ security.inviteExpires }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="userRole === 'viewer'" class="mt-4 p-3 bg-slate-800/50 rounded-xl text-center">
+            <p class="text-xs text-slate-500">👁️ Tryb podglądu — tylko odczyt</p>
+        </div>
     </div>`
 }

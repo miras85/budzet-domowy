@@ -2,7 +2,7 @@ import * as Utils from '../utils.js';
 import { ICON_PATHS } from '../icons.js?v=51';
 
 export default {
-    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking','budgetRankingExpanded'],
+    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking','budgetRankingExpanded', 'userRole'],
     emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts', 'update:budgetRankingExpanded'],
     setup() {
         return {
@@ -178,9 +178,9 @@ export default {
                     <div :class="getColorClass(tx.type)" class="font-bold text-sm whitespace-nowrap">{{ tx.type === 'income' ? '+' : (tx.type === 'transfer' ? '' : '-') }}{{ formatMoney(tx.amount) }}</div>
                     <div class="flex items-center gap-3 mt-1">
                         <button v-if="tx.status === 'planowana'" @click="$emit('realize-tx', tx)" class="w-7 h-7 rounded-full bg-green-600/20 text-green-400 flex items-center justify-center hover:bg-green-600 hover:text-white transition-colors">✓</button>
-                        <button @click="$emit('copy-tx', tx)" class="text-slate-500 hover:text-blue-400 p-1" title="Kopiuj">❐</button>
-                        <button @click="$emit('edit-tx', tx)" class="text-slate-500 hover:text-blue-400 p-1">✎</button>
-                        <button @click="$emit('delete-tx', tx.id)" class="text-slate-500 hover:text-red-500 p-1">×</button>
+                    <button v-if="userRole === 'admin'" @click="$emit('copy-tx', tx)" class="text-slate-500 hover:text-blue-400 p-1" title="Kopiuj">❐</button>
+                    <button v-if="userRole === 'admin'" @click="$emit('edit-tx', tx)" class="text-slate-500 hover:text-blue-400 p-1">✎</button>
+                    <button v-if="userRole === 'admin'" @click="$emit('delete-tx', tx.id)" class="text-slate-500 hover:text-red-500 p-1">×</button>
                     </div>
                 </div>
             </div>

@@ -71,6 +71,7 @@ const app = createApp({
             
             goals: [], overrides: [], recurringList: [], duePayments: [],
             security: { oldPassword: '', newPassword: '', newUsername: '', newUserPass: '', inviteLink: '', inviteExpires: '' },
+            userRole: 'admin',
             
             // Nowe obiekty
             newTx: { description: '', amount: '', type: 'expense', account_id: null, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] },
@@ -304,10 +305,11 @@ const app = createApp({
                 const data = await API.auth.login(username, password);
                 API.setToken(data.access_token);
                 this.isLoggedIn = true;
+                // Pobierz rolę usera
+                this.userRole = data.role || 'admin';
                 this.refreshAllData();
                 this.notify('success', 'Zalogowano');
             } catch (e) {
-                // Wyświetl szczegółowy komunikat błędu z serwera
                 const errorMsg = e.message || "Błąd logowania";
                 this.notify('error', errorMsg);
             }
