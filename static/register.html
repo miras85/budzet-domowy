@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DomowyBudżet — Rejestracja</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #0f172a; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div id="app" class="w-full max-w-md">
+
+        <!-- Ładowanie -->
+        <div id="loading" class="text-center text-slate-400">
+            <p>Sprawdzanie zaproszenia...</p>
+        </div>
+
+        <!-- Błąd tokenu -->
+        <div id="error" class="hidden text-center">
+            <div class="bg-red-900/30 border border-red-500 rounded-2xl p-8">
+                <p class="text-4xl mb-4">❌</p>
+                <h2 class="text-xl font-bold text-red-400 mb-2">Nieprawidłowy link</h2>
+                <p class="text-slate-400 text-sm">Link zaproszenia jest nieprawidłowy lub wygasł.</p>
+                <a href="/" class="mt-4 inline-block text-blue-400 text-sm hover:underline">← Wróć do logowania</a>
+            </div>
+        </div>
+
+        <!-- Formularz rejestracji -->
+        <div id="form" class="hidden">
+            <div class="bg-slate-800/80 backdrop-blur border border-slate-700 rounded-2xl p-8 shadow-2xl">
+                <div class="text-center mb-8">
+                    <p class="text-4xl mb-3">🏠</p>
+                    <h1 class="text-2xl font-bold text-white">DomowyBudżet</h1>
+                    <p class="text-slate-400 text-sm mt-1">Utwórz swoje konto</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs text-slate-400 uppercase font-bold mb-1 block">Login</label>
+                        <input
+                            id="username"
+                            type="text"
+                            placeholder="np. kasia"
+                            class="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 uppercase font-bold mb-1 block">Hasło</label>
+                        <input
+                            id="password"
+                            type="password"
+                            placeholder="Minimum 8 znaków"
+                            class="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 uppercase font-bold mb-1 block">Powtórz hasło</label>
+                        <input
+                            id="password2"
+                            type="password"
+                            placeholder="Powtórz hasło"
+                            class="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+
+                    <div id="error-msg" class="hidden text-red-400 text-sm text-center"></div>
+
+                    <button
+                        id="submit-btn"
+                        onclick="register()"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
+                    >
+                        Utwórz konto
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sukces -->
+        <div id="success" class="hidden text-center">
+            <div class="bg-green-900/30 border border-green-500 rounded-2xl p-8">
+                <p class="text-4xl mb-4">✅</p>
+                <h2 class="text-xl font-bold text-green-400 mb-2">Konto utworzone!</h2>
+                <p class="text-slate-400 text-sm mb-4">Możesz się teraz zalogować.</p>
+                <a href="/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition-colors">
+                    Przejdź do logowania →
+                </a>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Pobierz token z URL
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
+
+        // Sprawdź czy token istnieje
+        if (!token) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+        } else {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('form').classList.remove('hidden');
+        }
+
+        async function register() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const password2 = document.getElementById('password2').value;
+            const errorMsg = document.getElementById('error-msg');
+            const btn = document.getElementById('submit-btn');
+
+            // Walidacja
+            if (!username || !password) {
+                errorMsg.textContent = 'Wypełnij wszystkie pola';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            if (password.length < 8) {
+                errorMsg.textContent = 'Hasło musi mieć minimum 8 znaków';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            if (password !== password2) {
+                errorMsg.textContent = 'Hasła nie są identyczne';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            btn.textContent = 'Tworzenie konta...';
+            btn.disabled = true;
+            errorMsg.classList.add('hidden');
+
+            try {
+                const res = await fetch(`/api/register?token=${token}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (res.ok) {
+                    document.getElementById('form').classList.add('hidden');
+                    document.getElementById('success').classList.remove('hidden');
+                } else {
+                    const data = await res.json();
+                    errorMsg.textContent = data.detail || 'Błąd rejestracji';
+                    errorMsg.classList.remove('hidden');
+                    btn.textContent = 'Utwórz konto';
+                    btn.disabled = false;
+                }
+            } catch(e) {
+                errorMsg.textContent = 'Błąd połączenia';
+                errorMsg.classList.remove('hidden');
+                btn.textContent = 'Utwórz konto';
+                btn.disabled = false;
+            }
+        }
+
+        // Enter key support
+        document.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') register();
+        });
+    </script>
+</body>
+</html>

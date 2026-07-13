@@ -15,15 +15,9 @@ def check_rate_limit(ip: str, limit: int = 5, window: int = 60) -> bool:
     """Sprawdza czy IP przekroczył limit prób w danym oknie czasowym"""
     now = datetime.now()
     cutoff = now - timedelta(seconds=window)
-    
-    # Usuń stare próby
     login_attempts[ip] = [t for t in login_attempts[ip] if t > cutoff]
-    
-    # Sprawdź limit
     if len(login_attempts[ip]) >= limit:
         return False
-    
-    # Dodaj nową próbę
     login_attempts[ip].append(now)
     return True
 
@@ -37,23 +31,19 @@ app = FastAPI()
 async def rate_limit_middleware(request: Request, call_next):
     if request.url.path == "/token" and request.method == "POST":
         client_ip = request.client.host
-        
         if not check_rate_limit(client_ip, limit=5, window=60):
             print(f"🚫 BLOCKED IP: {client_ip}")
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Zbyt wiele prób logowania. Spróbuj za 1 minutę."}
             )
-    
     response = await call_next(request)
     return response
-    
-    # Security Headers Middleware
+
+# Security Headers Middleware
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
-    
-    # Content Security Policy
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com 'unsafe-eval'; "
@@ -63,16 +53,12 @@ async def security_headers_middleware(request: Request, call_next):
         "connect-src 'self'; "
         "frame-ancestors 'none';"
     )
-    
-    # Inne security headers
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    
     return response
-    
-    
+
 # Dołączamy routery
 app.include_router(auth_router.router)
 app.include_router(finance_router.router)
@@ -99,6 +85,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 async def read_index():
     return FileResponse('static/index.html')
+
+@app.get("/register")
+async def read_register():
+    return FileResponse('static/register.html')
 
 @app.get("/sw.js")
 async def service_worker():
