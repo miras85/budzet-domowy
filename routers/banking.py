@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 import database, models
 from services import banking as banking_service
+from services.banking import parse_ing_transactions
 
 router = APIRouter(prefix="/api/banking", tags=["Banking"])
 
@@ -101,7 +102,6 @@ def get_banking_status(
         return {"connected": False}
 
     # Parsuj transakcje do formatu DomowyBudżet
-    from services.banking import parse_ing_transactions
 
     # Znajdź konto ROR usera
     from models import Account
