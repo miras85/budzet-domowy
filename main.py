@@ -7,6 +7,7 @@ from routers import finance as finance_router
 from routers import recurring as recurring_router
 from collections import defaultdict
 from datetime import datetime, timedelta
+from routers import banking as banking_router
 
 # Prosta implementacja rate limiting
 login_attempts = defaultdict(list)
@@ -63,6 +64,7 @@ async def security_headers_middleware(request: Request, call_next):
 app.include_router(auth_router.router)
 app.include_router(finance_router.router)
 app.include_router(recurring_router.router)
+app.include_router(banking_router.router)
 
 print("--- SYSTEM STARTUP: WERSJA MODULARNA ---")
 

@@ -137,3 +137,17 @@ class UserDataAccess(Base):
 
     user = relationship("User", foreign_keys=[user_id])
     owner = relationship("User", foreign_keys=[owner_id])
+
+class BankSession(Base):
+    __tablename__ = "bank_sessions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    session_id = Column(String(255), nullable=True)
+    bank_name = Column(String(100), nullable=False)
+    bank_country = Column(String(10), default="PL")
+    status = Column(String(50), default="pending")
+    valid_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_sync = Column(DateTime, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
