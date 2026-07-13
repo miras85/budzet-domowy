@@ -163,3 +163,100 @@ def sync_transactions(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/import")
+def import_transactions(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(database.get_current_user)
+):
+    """Importuje transakcje z banku do bazy DomowyBudżet"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Tylko admin może importować")
+
+    session = db.query(models.BankSession).filter(
+        models.BankSession.user_id == current_user.id,
+        models.BankSession.status == "active"
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Brak aktywnego połączenia z bankiem")
+
+    try:
+        # Pobierz konta z sesji
+        accounts = banking_service.get_session_accounts(session.session_id)
+        if not accounts:
+            raise HTTPException(status_code=404, detail="Brak kont w sesji")
+
+        # Pobierz transakcje z ostatnich 30 dni
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        date_to = datetime.now().strftime("%Y-%m-%d")
+
+        all_transactions = []
+        for account in accounts:
+            account_uid = account.get("uid")
+            txs = banking_service.get_transactions(
+                session.session_id,
+                account_uid,
+                date_from,
+                date_to
+            )
+            all_transactions.extend(txs)
+
+        # Znajdź konto ROR usera
+        ror_account = db.query(models.Account).filter(
+            models.Account.user_id == current_user.id,
+            models.Account.is_savings == False
+        ).first()
+        account_id = ror_account.id if ror_account else 1
+
+        # Parsuj transakcje
+        parsed = parse_ing_transactions(all_transactions, account_id)
+
+        # Zapisz do bazy z deduplikacją
+        imported = 0
+        skipped = 0
+
+        for tx_data in parsed:
+            # Sprawdź duplikat po reference + account_id
+            reference = tx_data.get("reference", "")
+            existing = db.query(models.Transaction).filter(
+                models.Transaction.description.like(f"%{reference}%")
+            ).first() if reference else None
+
+            if existing:
+                skipped += 1
+                continue
+
+            # Utwórz nową transakcję
+            new_tx = models.Transaction(
+                date=tx_data["date"],
+                amount=tx_data["amount"],
+                description=tx_data["description"],
+                type=tx_data["type"],
+                status="zrealizowana",
+                account_id=tx_data["account_id"],
+                category_id=None  # Auto-kategoryzacja w przyszłości
+            )
+            db.add(new_tx)
+
+            # Zaktualizuj saldo konta
+            from utils import update_balance
+            update_balance(db, account_id, tx_data["amount"], tx_data["type"],
+                         None, is_reversal=False)
+
+            imported += 1
+
+        # Zaktualizuj last_sync
+        session.last_sync = datetime.now(timezone.utc)
+        db.commit()
+
+        return {
+            "status": "imported",
+            "imported": imported,
+            "skipped": skipped,
+            "total": len(parsed)
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
