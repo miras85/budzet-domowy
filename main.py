@@ -90,6 +90,14 @@ async def read_index():
 async def read_register():
     return FileResponse('static/register.html')
 
+@app.get("/privacy")
+async def privacy():
+    return FileResponse('static/privacy.html')
+
+@app.get("/terms")
+async def terms():
+    return FileResponse('static/terms.html')
+
 @app.get("/sw.js")
 async def service_worker():
     return FileResponse('static/sw.js', media_type='application/javascript')
