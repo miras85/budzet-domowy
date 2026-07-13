@@ -57,27 +57,29 @@ fi
 log "🔌 Otwieram tunel SSH do Oracle..."
 
 # Sprawdź czy port 3307 jest już zajęty
+# Zawsze zabij stary tunel jeśli istnieje
 if lsof -i :$LOCAL_PORT > /dev/null 2>&1; then
-    log "${YELLOW}⚠️  Port $LOCAL_PORT już zajęty — zamykam stary tunel${NC}"
+    log "${YELLOW}⚠️  Port $LOCAL_PORT zajęty — zamykam stary tunel${NC}"
     lsof -ti :$LOCAL_PORT | xargs kill -9 2>/dev/null
     sleep 2
-    TUNNEL_PID=""
-else
-    ssh -i "$SSH_KEY" \
-        -L ${LOCAL_PORT}:localhost:3306 \
-        -o StrictHostKeyChecking=no \
-        -o ConnectTimeout=10 \
-        -N -f \
-        "$ORACLE_USER@$ORACLE_HOST"
-
-    TUNNEL_PID=$(lsof -t -i :$LOCAL_PORT)
-
-    if [ -z "$TUNNEL_PID" ]; then
-        log "${RED}❌ Nie udało się otworzyć tunelu SSH!${NC}"
-        exit 1
-    fi
-    log "${GREEN}✅ Tunel SSH aktywny (PID: $TUNNEL_PID)${NC}"
 fi
+
+# Zawsze otwieraj nowy tunel
+log "🔌 Otwieram nowy tunel SSH..."
+ssh -i "$SSH_KEY" \
+    -L ${LOCAL_PORT}:localhost:3306 \
+    -o StrictHostKeyChecking=no \
+    -o ConnectTimeout=10 \
+    -N -f \
+    "$ORACLE_USER@$ORACLE_HOST"
+
+TUNNEL_PID=$(lsof -t -i :$LOCAL_PORT)
+
+if [ -z "$TUNNEL_PID" ]; then
+    log "${RED}❌ Nie udało się otworzyć tunelu SSH!${NC}"
+    exit 1
+fi
+log "${GREEN}✅ Tunel SSH aktywny (PID: $TUNNEL_PID)${NC}"
 
 # Poczekaj chwilę na tunel
 sleep 2
