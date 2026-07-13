@@ -100,12 +100,24 @@ def get_banking_status(
     if not session:
         return {"connected": False}
 
+    # Parsuj transakcje do formatu DomowyBudżet
+    from services.banking import parse_ing_transactions
+
+    # Znajdź konto ROR usera
+    from models import Account
+    ror_account = db.query(Account).filter(
+        Account.user_id == current_user.id,
+        Account.is_savings == False
+    ).first()
+
+    account_id = ror_account.id if ror_account else 1
+
+    parsed = parse_ing_transactions(all_transactions, account_id)
+
     return {
-        "connected": True,
-        "bank_name": session.bank_name,
-        "status": session.status,
-        "valid_until": str(session.valid_until),
-        "last_sync": str(session.last_sync) if session.last_sync else None
+        "status": "synced",
+        "transactions_count": len(parsed),
+        "preview": parsed[:5]  # Pokaż pierwsze 5 dla podglądu
     }
 
 

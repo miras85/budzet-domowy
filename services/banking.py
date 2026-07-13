@@ -122,3 +122,64 @@ def get_session_accounts(session_id: str) -> list:
     # ING zwraca konta w accounts_data z polem uid
     accounts_data = data.get("accounts_data", [])
     return [{"uid": acc["uid"]} for acc in accounts_data if "uid" in acc]
+
+def parse_ing_transaction(tx: dict, account_id: int) -> dict:
+    """
+    Konwertuje transakcję z formatu Enable Banking/ING
+    na format DomowyBudżet
+    """
+    # Kwota i typ
+    amount = float(tx.get("transaction_amount", {}).get("amount", 0))
+    indicator = tx.get("credit_debit_indicator", "DBIT")
+    tx_type = "expense" if indicator == "DBIT" else "income"
+
+    # Opis — łączymy remittance_information z nazwą kontrahenta
+    remittance = tx.get("remittance_information", [])
+    description_parts = []
+
+    # Nazwa kontrahenta
+    if tx_type == "expense":
+        # Dla wydatków — wierzyciel (gdzie poszły pieniądze)
+        creditor = tx.get("creditor", {})
+        creditor_address = creditor.get("postal_address", {})
+        address_lines = creditor_address.get("address_line", [])
+        if address_lines:
+            description_parts.append(address_lines[0].strip())
+    else:
+        # Dla przychodów — dłużnik (skąd przyszły pieniądze)
+        debtor = tx.get("debtor", {})
+        debtor_address = debtor.get("postal_address", {})
+        address_lines = debtor_address.get("address_line", [])
+        if address_lines:
+            description_parts.append(address_lines[0].strip())
+
+    # Dodaj remittance information
+    if remittance:
+        description_parts.append(remittance[0])
+
+    description = " | ".join(filter(None, description_parts))
+    if not description:
+        description = f"Transakcja ING {tx.get('booking_date', '')}"
+
+    return {
+        "date": tx.get("booking_date"),
+        "amount": amount,
+        "description": description,
+        "type": tx_type,
+        "status": "zrealizowana",
+        "account_id": account_id,
+        "reference": tx.get("entry_reference", ""),
+    }
+
+
+def parse_ing_transactions(transactions: list, account_id: int) -> list:
+    """Konwertuje listę transakcji ING"""
+    result = []
+    for tx in transactions:
+        try:
+            parsed = parse_ing_transaction(tx, account_id)
+            result.append(parsed)
+        except Exception as e:
+            print(f"⚠️ Błąd parsowania transakcji: {e}")
+            continue
+    return result
