@@ -1,15 +1,15 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js?v=56';
+import * as API from './api.js?v=57';
 import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=55';
-import AccountsView from './components/AccountsView.js';
-import GoalsView from './components/GoalsView.js?v=8';
-import PaymentsView from './components/PaymentsView.js?v=5';
-import SettingsView from './components/SettingsView.js?v=52';
+import DashboardView from './components/DashboardView.js?v=56';
+import AccountsView from './components/AccountsView.js?v=2';
+import GoalsView from './components/GoalsView.js?v=9';
+import PaymentsView from './components/PaymentsView.js?v=6';
+import SettingsView from './components/SettingsView.js?v=53';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
