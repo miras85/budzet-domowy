@@ -78,6 +78,7 @@
                 v-if="isLoggedIn"
                 v-model:current-tab="currentTab"
                 :loan-alerts-count="loanAlertsCount"
+                :user-role="userRole"
                 @open-add="resetForm(); currentTab = 'add'">
             </the-navigation>
 
@@ -260,6 +261,6 @@
             
         </div>
     </div>
-    <script type="module" src="/static/js/main.js?v=95"></script>
+    <script type="module" src="/static/js/main.js?v=96"></script>
 </body>
 </html>

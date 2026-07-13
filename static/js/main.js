@@ -13,7 +13,7 @@ import SettingsView from './components/SettingsView.js?v=53';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
-import TheNavigation from './components/TheNavigation.js?v=2';
+import TheNavigation from './components/TheNavigation.js?v=3';
 import LoanAlertsModal from './components/LoanAlertsModal.js?v=1';  // NOWY
 
 const app = createApp({
