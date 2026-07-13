@@ -87,14 +87,7 @@ def create_session(code: str) -> dict:
 
 def get_transactions(session_id: str, account_uid: str,
                      date_from: str = None, date_to: str = None) -> list:
-    """
-    Pobiera transakcje dla konta.
-    date_from/date_to w formacie YYYY-MM-DD
-    """
     headers = get_auth_headers()
-
-    # Dodaj session header
-    headers["X-Session-Id"] = session_id
 
     params = {}
     if date_from:
@@ -118,7 +111,6 @@ def get_transactions(session_id: str, account_uid: str,
 def get_session_accounts(session_id: str) -> list:
     """Pobiera listę kont z sesji"""
     headers = get_auth_headers()
-    headers["X-Session-Id"] = session_id
 
     r = requests.get(f"{API_BASE}/sessions/{session_id}", headers=headers)
     if r.status_code != 200:
@@ -126,4 +118,7 @@ def get_session_accounts(session_id: str) -> list:
             status_code=500,
             detail=f"Błąd pobierania sesji: {r.text}"
         )
-    return r.json().get("accounts", [])
+    data = r.json()
+    # ING zwraca konta w accounts_data z polem uid
+    accounts_data = data.get("accounts_data", [])
+    return [{"uid": acc["uid"]} for acc in accounts_data if "uid" in acc]
