@@ -29,7 +29,6 @@ def connect_bank(
     """Rozpoczyna połączenie z bankiem — zwraca URL autoryzacji"""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Tylko admin może łączyć konto bankowe")
-
     auth_url = banking_service.start_bank_auth(bank_name)
     return {"auth_url": auth_url}
 
@@ -40,17 +39,11 @@ def banking_callback(
     request: Request,
     db: Session = Depends(database.get_db)
 ):
-    """
-    Callback po autoryzacji w banku.
-    Tworzy sesję i zapisuje w bazie.
-    """
+    """Callback po autoryzacji w banku."""
     try:
         session_data = banking_service.create_session(code)
         session_id = session_data.get("session_id") or session_data.get("id")
-        accounts = session_data.get("accounts", [])
 
-        # Znajdź usera — na razie bierzemy admina (user_id=2)
-        # TODO: powiązać state z user_id
         user = db.query(models.User).filter(
             models.User.role == "admin"
         ).first()
@@ -58,7 +51,6 @@ def banking_callback(
         if not user:
             return RedirectResponse("/?banking=error")
 
-        # Sprawdź czy już istnieje sesja dla tego usera
         existing = db.query(models.BankSession).filter(
             models.BankSession.user_id == user.id
         ).first()
@@ -101,23 +93,12 @@ def get_banking_status(
     if not session:
         return {"connected": False}
 
-    # Parsuj transakcje do formatu DomowyBudżet
-
-    # Znajdź konto ROR usera
-    from models import Account
-    ror_account = db.query(Account).filter(
-        Account.user_id == current_user.id,
-        Account.is_savings == False
-    ).first()
-
-    account_id = ror_account.id if ror_account else 1
-
-    parsed = parse_ing_transactions(all_transactions, account_id)
-
     return {
-        "status": "synced",
-        "transactions_count": len(parsed),
-        "preview": parsed[:5]  # Pokaż pierwsze 5 dla podglądu
+        "connected": True,
+        "bank_name": session.bank_name,
+        "status": session.status,
+        "valid_until": str(session.valid_until),
+        "last_sync": str(session.last_sync) if session.last_sync else None
     }
 
 
@@ -160,14 +141,24 @@ def sync_transactions(
             )
             all_transactions.extend(txs)
 
+        # Znajdź konto ROR usera
+        ror_account = db.query(models.Account).filter(
+            models.Account.user_id == current_user.id,
+            models.Account.is_savings == False
+        ).first()
+        account_id = ror_account.id if ror_account else 1
+
+        # Parsuj transakcje do formatu DomowyBudżet
+        parsed = parse_ing_transactions(all_transactions, account_id)
+
         # Zaktualizuj last_sync
         session.last_sync = datetime.now(timezone.utc)
         db.commit()
 
         return {
             "status": "synced",
-            "transactions_count": len(all_transactions),
-            "transactions": all_transactions
+            "transactions_count": len(parsed),
+            "preview": parsed[:5]
         }
 
     except Exception as e:
