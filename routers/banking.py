@@ -101,13 +101,12 @@ def get_banking_status(
         "last_sync": str(session.last_sync) if session.last_sync else None
     }
 
-
 @router.post("/sync")
 def sync_transactions(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(database.get_current_user)
 ):
-    """Synchronizuje transakcje z banku"""
+    """Podgląd transakcji z banku (bez zapisu)"""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Tylko admin może synchronizować")
 
@@ -119,40 +118,49 @@ def sync_transactions(
     if not session:
         raise HTTPException(status_code=404, detail="Brak aktywnego połączenia z bankiem")
 
-    try:
-        # Pobierz konta z sesji
-        accounts = banking_service.get_session_accounts(session.session_id)
+    # Throttling — nie częściej niż co 5 minut
+    if session.last_sync:
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        last = session.last_sync
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        diff = (now - last).total_seconds()
+        if diff < 300:
+            remaining = int(300 - diff)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Poczekaj {remaining} sekund przed kolejną synchronizacją"
+            )
 
+    try:
+        accounts = banking_service.get_session_accounts(session.session_id)
         if not accounts:
             raise HTTPException(status_code=404, detail="Brak kont w sesji")
 
-        # Pobierz transakcje z ostatnich 30 dni
         date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
         date_to = datetime.now().strftime("%Y-%m-%d")
 
         all_transactions = []
         for account in accounts:
-            account_uid = account.get("uid") or account.get("id")
+            account_uid = account.get("uid")
             txs = banking_service.get_transactions(
-                session.session_id,
-                account_uid,
-                date_from,
-                date_to
+                session.session_id, account_uid, date_from, date_to
             )
             all_transactions.extend(txs)
 
-        # Znajdź konto ROR usera
         ror_account = db.query(models.Account).filter(
             models.Account.user_id == current_user.id,
             models.Account.is_savings == False
         ).first()
         account_id = ror_account.id if ror_account else 1
 
-        # Parsuj transakcje do formatu DomowyBudżet
-        parsed = parse_ing_transactions(all_transactions, account_id)
+        parsed = parse_ing_transactions(
+            all_transactions, account_id,
+            db=db, user_id=current_user.id
+        )
 
-        # Zaktualizuj last_sync
-        session.last_sync = datetime.now(timezone.utc)
+        session.last_sync = datetime.now()
         db.commit()
 
         return {
@@ -161,15 +169,20 @@ def sync_transactions(
             "preview": parsed[:5]
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/import")
 def import_transactions(
+    date_from: str,
+    date_to: str,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(database.get_current_user)
 ):
-    """Importuje transakcje z banku do bazy DomowyBudżet"""
+    """Importuje transakcje z banku do bazy za podany okres"""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Tylko admin może importować")
 
@@ -182,52 +195,43 @@ def import_transactions(
         raise HTTPException(status_code=404, detail="Brak aktywnego połączenia z bankiem")
 
     try:
-        # Pobierz konta z sesji
         accounts = banking_service.get_session_accounts(session.session_id)
         if not accounts:
             raise HTTPException(status_code=404, detail="Brak kont w sesji")
-
-        # Pobierz transakcje z ostatnich 30 dni
-        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        date_to = datetime.now().strftime("%Y-%m-%d")
 
         all_transactions = []
         for account in accounts:
             account_uid = account.get("uid")
             txs = banking_service.get_transactions(
-                session.session_id,
-                account_uid,
-                date_from,
-                date_to
+                session.session_id, account_uid, date_from, date_to
             )
             all_transactions.extend(txs)
 
-        # Znajdź konto ROR usera
         ror_account = db.query(models.Account).filter(
             models.Account.user_id == current_user.id,
             models.Account.is_savings == False
         ).first()
         account_id = ror_account.id if ror_account else 1
 
-        # Parsuj transakcje
-        parsed = parse_ing_transactions(all_transactions, account_id)
+        parsed = parse_ing_transactions(
+            all_transactions, account_id,
+            db=db, user_id=current_user.id
+        )
 
-        # Zapisz do bazy z deduplikacją
         imported = 0
         skipped = 0
 
         for tx_data in parsed:
-            # Sprawdź duplikat po reference + account_id
+            # Deduplikacja po reference
             reference = tx_data.get("reference", "")
-            existing = db.query(models.Transaction).filter(
-                models.Transaction.description.like(f"%{reference}%")
-            ).first() if reference else None
+            if reference:
+                existing = db.query(models.Transaction).filter(
+                    models.Transaction.description.like(f"%{reference}%")
+                ).first()
+                if existing:
+                    skipped += 1
+                    continue
 
-            if existing:
-                skipped += 1
-                continue
-
-            # Utwórz nową transakcję
             new_tx = models.Transaction(
                 date=tx_data["date"],
                 amount=tx_data["amount"],
@@ -235,28 +239,38 @@ def import_transactions(
                 type=tx_data["type"],
                 status="zrealizowana",
                 account_id=tx_data["account_id"],
-                category_id=None  # Auto-kategoryzacja w przyszłości
+                target_account_id=tx_data.get("target_account_id"),
+                category_id=None
             )
             db.add(new_tx)
+            db.flush()
 
-            # Zaktualizuj saldo konta
+            # Zaktualizuj saldo
             from utils import update_balance
-            update_balance(db, account_id, tx_data["amount"], tx_data["type"],
-                         None, is_reversal=False)
+            update_balance(
+                db,
+                tx_data["account_id"],
+                tx_data["amount"],
+                tx_data["type"],
+                tx_data.get("target_account_id"),
+                is_reversal=False
+            )
 
             imported += 1
 
-        # Zaktualizuj last_sync
-        session.last_sync = datetime.now(timezone.utc)
+        session.last_sync = datetime.now()
         db.commit()
 
         return {
             "status": "imported",
             "imported": imported,
             "skipped": skipped,
-            "total": len(parsed)
+            "total": len(parsed),
+            "period": f"{date_from} → {date_to}"
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

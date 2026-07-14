@@ -123,63 +123,121 @@ def get_session_accounts(session_id: str) -> list:
     accounts_data = data.get("accounts_data", [])
     return [{"uid": acc["uid"]} for acc in accounts_data if "uid" in acc]
 
-def parse_ing_transaction(tx: dict, account_id: int) -> dict:
+def get_account_by_bban(db, bban: str, user_id: int):
+    """Znajdź konto po numerze BBAN"""
+    if not bban:
+        return None
+    # Sprawdź czy bban zawiera się w numerze konta lub odwrotnie
+    from models import Account
+    accounts = db.query(Account).filter(
+        Account.user_id == user_id
+    ).all()
+    for acc in accounts:
+        if acc.bban and (
+            acc.bban == bban or
+            acc.bban.endswith(bban[-8:]) or
+            bban.endswith(acc.bban[-8:])
+        ):
+            return acc
+    return None
+
+
+def parse_ing_transaction(tx: dict, default_account_id: int,
+                          db=None, user_id: int = None) -> dict:
     """
     Konwertuje transakcję z formatu Enable Banking/ING
-    na format DomowyBudżet
+    na format DomowyBudżet.
+    Wykrywa transfery wewnętrzne na podstawie BBAN.
     """
-    # Kwota i typ
     amount = float(tx.get("transaction_amount", {}).get("amount", 0))
     indicator = tx.get("credit_debit_indicator", "DBIT")
     tx_type = "expense" if indicator == "DBIT" else "income"
 
-    # Opis — łączymy remittance_information z nazwą kontrahenta
+    # Pobierz BBAN kont
+    debtor_bban = None
+    creditor_bban = None
+
+    debtor_acc = tx.get("debtor_account", {})
+    if debtor_acc:
+        debtor_bban = debtor_acc.get("other", {}).get("identification") or \
+                      debtor_acc.get("iban")
+
+    creditor_acc = tx.get("creditor_account", {})
+    if creditor_acc:
+        creditor_bban = creditor_acc.get("other", {}).get("identification") or \
+                        creditor_acc.get("iban")
+
+    # Wykryj transfer wewnętrzny
+    source_account_id = default_account_id
+    target_account_id = None
+
+    if db and user_id:
+        debtor_account = get_account_by_bban(db, debtor_bban, user_id) if debtor_bban else None
+        creditor_account = get_account_by_bban(db, creditor_bban, user_id) if creditor_bban else None
+
+        if debtor_account and creditor_account:
+            # Oba konta są nasze — to transfer wewnętrzny!
+            tx_type = "transfer"
+            source_account_id = debtor_account.id
+            target_account_id = creditor_account.id
+        elif debtor_account and tx_type == "expense":
+            source_account_id = debtor_account.id
+        elif creditor_account and tx_type == "income":
+            source_account_id = creditor_account.id
+
+    # Opis transakcji
     remittance = tx.get("remittance_information", [])
     description_parts = []
 
-    # Nazwa kontrahenta
-    if tx_type == "expense":
-        # Dla wydatków — wierzyciel (gdzie poszły pieniądze)
+    if tx_type == "transfer":
+        # Dla transferów — opis z remittance
+        if remittance:
+            description_parts.append(remittance[0])
+    elif tx_type == "expense":
         creditor = tx.get("creditor", {})
-        creditor_address = creditor.get("postal_address", {})
-        address_lines = creditor_address.get("address_line", [])
+        address_lines = creditor.get("postal_address", {}).get("address_line", [])
         if address_lines:
             description_parts.append(address_lines[0].strip())
+        if remittance:
+            description_parts.append(remittance[0])
     else:
-        # Dla przychodów — dłużnik (skąd przyszły pieniądze)
         debtor = tx.get("debtor", {})
-        debtor_address = debtor.get("postal_address", {})
-        address_lines = debtor_address.get("address_line", [])
+        address_lines = debtor.get("postal_address", {}).get("address_line", [])
         if address_lines:
             description_parts.append(address_lines[0].strip())
-
-    # Dodaj remittance information
-    if remittance:
-        description_parts.append(remittance[0])
+        if remittance:
+            description_parts.append(remittance[0])
 
     description = " | ".join(filter(None, description_parts))
     if not description:
         description = f"Transakcja ING {tx.get('booking_date', '')}"
 
-    return {
+    result = {
         "date": tx.get("booking_date"),
         "amount": amount,
         "description": description,
         "type": tx_type,
         "status": "zrealizowana",
-        "account_id": account_id,
+        "account_id": source_account_id,
         "reference": tx.get("entry_reference", ""),
     }
 
+    if target_account_id:
+        result["target_account_id"] = target_account_id
 
-def parse_ing_transactions(transactions: list, account_id: int) -> list:
+    return result
+
+
+def parse_ing_transactions(transactions: list, default_account_id: int,
+                           db=None, user_id: int = None) -> list:
     """Konwertuje listę transakcji ING"""
     result = []
     for tx in transactions:
         try:
-            parsed = parse_ing_transaction(tx, account_id)
+            parsed = parse_ing_transaction(tx, default_account_id, db, user_id)
             result.append(parsed)
         except Exception as e:
             print(f"⚠️ Błąd parsowania transakcji: {e}")
             continue
     return result
+

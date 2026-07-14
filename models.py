@@ -27,6 +27,7 @@ class Account(Base):
     balance = Column(DECIMAL(10, 2), default=0.0)
     is_savings = Column(Boolean, default=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    bban = Column(String(50), nullable=True)
 
     user = relationship("User", back_populates="accounts")
 
