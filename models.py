@@ -150,5 +150,7 @@ class BankSession(Base):
     valid_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_sync = Column(DateTime, nullable=True)
+    sync_count_today = Column(Integer, default=0, nullable=False)
+    sync_count_date = Column(Date, nullable=True)
 
     user = relationship("User", foreign_keys=[user_id])
