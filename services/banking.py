@@ -175,7 +175,7 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
         debtor_account = get_account_by_bban(db, debtor_bban, user_id) if debtor_bban else None
         creditor_account = get_account_by_bban(db, creditor_bban, user_id) if creditor_bban else None
 
-       if debtor_account and creditor_account:
+        if debtor_account and creditor_account:
             # Oba konta są nasze — to transfer wewnętrzny!
             # Importuj TYLKO stronę DBIT (wydatek z konta źródłowego)
             if indicator != "DBIT":
