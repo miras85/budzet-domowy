@@ -701,47 +701,7 @@ Status: Aplikacja stabilna, bezpieczna, kompletna
 Rezultat: Z 2/10 → 9.6/10 (enterprise-grade)
 
 
-17. Następne kroki
-
-Priorytet 1: Oracle Cloud Migration (7-8h)
-
-Cel: 24/7 uptime za $0
-Kiedy: Weekend/wolny dzień
-Przygotowanie: ✅ 100% gotowe
-
-Etapy:
-
-    Etap 0: Przygotowanie (Oracle account, final backup) - 1h
-    Etap 1: VM Setup (Ubuntu, SSH, podstawy) - 2h
-    Etap 2: MySQL (instalacja, migracja bazy) - 1h
-    Etap 3: Backend (Python, FastAPI, systemd) - 1.5h
-    Etap 4: Nginx (reverse proxy, SSL) - 1h
-    Etap 5: Cloudflare Tunnel (redirect) - 30 min
-    Etap 6: Alembic + Verificacja - 1h
-
-
-Priorytet 2: Monitoring & stabilizacja (1 tydzień)
-
-    Obserwacja Oracle VM (uptime, performance)
-    Weryfikacja backupów (Object Storage)
-    Test wszystkich funkcji w production
-
-
-Priorytet 3: Optymalizacje (opcjonalnie, 1-2 miesiące)
-
-    Build-time Tailwind (offline + performance)
-    Smoke tests (krytyczne ścieżki)
-    DECIMAL migration (jeśli problemy z zaokrągleniami)
-
-
-Priorytet 4: SaaS prep (jeśli kiedyś, 3+ miesiące)
-
-    Multi-tenancy (user_id w tabelach)
-    Billing (Stripe)
-    Email notifications
-    Admin panel
-
-18. Wsparcie i troubleshooting
+17. Wsparcie i troubleshooting
 
 Najczęstsze problemy:
 
@@ -800,3 +760,106 @@ Cache problemy (stara wersja UI):
 **Czas migracji:** 5 godzin
 **Downtime:** ~10 minut (przełączenie tunelu)
 **Utrata danych:** 0 (pełna weryfikacja)
+
+
+## 18. Aktualizacja 2026-07-15 — Multi-tenancy + Enable Banking
+
+### Status
+- Branch: `feature/multi-tenancy` (do merge z main)
+- Alembic HEAD: `17374f5bfff3`
+- Live: https://budzet-domowy.pl ✅
+
+### Nowe funkcje
+
+#### Sprint 1: Multi-tenancy Backend
+- `user_id` dodany do: accounts, categories, loans, goals, recurring_transactions
+- `get_data_owner_id()` w database.py
+- Wszystkie routery filtrują dane per user_id
+
+#### Sprint 2: Invite System + Read-only
+- Tabele: invitations, user_data_access
+- Role: admin / viewer
+- Endpoint `/api/invite` — jednorazowy link 48h
+- Strona `/register?token=xxx`
+- Read-only mode dla viewera
+- Strony: /privacy, /terms
+
+#### Sprint 3: Enable Banking / ING
+- Provider: Enable Banking (Production)
+- App ID: 1c02300f-053a-4c23-88ea-01144af2521d
+- PEM: tylko na Oracle, w .gitignore!
+- ING Bank Śląski połączony (session ważna do 2026-10-11)
+- Parser: DBIT→expense, CRDT→income, oba BBAN→transfer
+- Deduplikacja transferów: pomija CRDT stronę
+- Auto-kategoryzacja: szuka podobnego opisu w historii
+- Throttling PSD2: max 4 sync/24h
+- Import z zakresem dat
+
+### Nowe tabele
+bank_sessions — sesje Enable Banking
+invitations — zaproszenia
+user_data_access — dostęp viewer→admin
+
+### Nowe kolumny
+accounts.bban — numer BBAN do wykrywania transferów
+accounts/categories/loans/
+goals/recurring.user_id — multi-tenancy
+users.role — admin/viewer
+users.invited_by — FK → users.id
+bank_sessions.sync_count_today — licznik PSD2
+bank_sessions.sync_count_date — data licznika
+
+### BBAN kont ING
+ID 1: ROR 54105014451000009064903116
+ID 2: Podróże 47105014581000002296106442
+ID 3: Fundusz domowy 77105014451000009740430005
+ID 4: Gotówka NULL
+
+### Nowe endpointy
+GET /api/banking/banks
+POST /api/banking/connect
+GET /api/banking/callback
+GET /api/banking/status
+POST /api/banking/sync (podgląd, max 4/24h)
+POST /api/banking/import (zapis, date_from + date_to)
+GET /api/users/me
+POST /api/invite
+POST /api/register
+GET /privacy
+GET /terms
+
+### Quick Reference Oracle
+```bash
+# Restart
+sudo systemctl restart homebudget
+
+# Logi
+sudo journalctl -u homebudget -n 50 --no-pager
+
+# Alembic
+cd ~/homebudget && source venv/bin/activate && alembic upgrade head
+
+# Backup (Mac)
+~/HomeBudget/backup_db.sh
+
+# Test ING sync (uwaga: limit 4/24h!)
+TOKEN=$(curl -s -X POST https://budzet-domowy.pl/token \
+  -d 'username=admin&password=HASLO' \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+curl -s -X POST https://budzet-domowy.pl/api/banking/sync \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+Otwarte zadania
+⬜ Test importu produkcyjnego z ING
+⬜ Cron job auto-sync o 3:00 na Oracle
+⬜ Merge feature/multi-tenancy → main
+⬜ Smart kategoryzacja (>500 transakcji)
+
+Użytkownicy
+admin — pełny dostęp
+Kasia — viewer (read-only, widzi dane admina)
+
+---
+
+
