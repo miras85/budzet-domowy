@@ -1,8 +1,8 @@
 import { ICON_PATHS, COLORS } from '../icons.js?v=51';
 
 export default {
-    props: ['categories', 'overrides', 'newCategoryName', 'newOverride', 'security', 'userRole'],
-    emits: ['update:newCategoryName', 'add-category', 'update-category', 'delete-category', 'add-override', 'delete-override', 'change-password', 'register-user'],
+    props: ['categories', 'overrides', 'newCategoryName', 'newOverride', 'security', 'userRole', 'banking'],
+    emits: ['update:newCategoryName', 'add-category', 'update-category', 'delete-category', 'add-override', 'delete-override', 'change-password', 'register-user', 'banking-connect', 'banking-sync', 'banking-import'],
     data() {
         return {
             iconPaths: ICON_PATHS,
@@ -148,8 +148,74 @@ export default {
             </div>
         </div>
 
-        <div v-if="userRole === 'viewer'" class="mt-4 p-3 bg-slate-800/50 rounded-xl text-center">
-            <p class="text-xs text-slate-500">👁️ Tryb podglądu — tylko odczyt</p>
-        </div>
-    </div>`
+        <!-- ING BANKING — tylko admin -->
+                <div v-if="userRole === 'admin'" class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-orange-500">
+                    <h3 class="font-bold text-slate-200 mb-4">🏦 ING Bank — Automatyczny Import</h3>
+
+                    <!-- Status połączenia -->
+                    <div v-if="banking.connected" class="mb-4 p-3 bg-green-900/30 border border-green-700 rounded-xl">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <p class="text-xs text-green-400 font-bold">✅ Połączono z {{ banking.bankName }}</p>
+                                <p class="text-xs text-slate-500 mt-1">Ważne do: {{ banking.validUntil }}</p>
+                                <p v-if="banking.lastSync" class="text-xs text-slate-500">Ostatnia sync: {{ banking.lastSync }}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-xs text-slate-400">Dziś użyto:</p>
+                                <p class="text-lg font-bold" :class="banking.syncsUsed >= 4 ? 'text-red-400' : 'text-green-400'">
+                                    {{ banking.syncsUsed }}/4
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="mb-4 p-3 bg-slate-800 border border-slate-600 rounded-xl">
+                        <p class="text-xs text-slate-400">❌ Brak połączenia z bankiem</p>
+                    </div>
+
+                    <!-- Import z zakresem dat -->
+                    <div v-if="banking.connected" class="space-y-3">
+                        <h4 class="text-xs text-slate-400 uppercase font-bold">Importuj transakcje</h4>
+                        <div class="flex gap-2">
+                            <div class="flex-1">
+                                <label class="text-xs text-slate-500 mb-1 block">Od</label>
+                                <input v-model="banking.dateFrom" type="date" class="input-dark w-full p-2 rounded-lg text-sm">
+                            </div>
+                            <div class="flex-1">
+                                <label class="text-xs text-slate-500 mb-1 block">Do</label>
+                                <input v-model="banking.dateTo" type="date" class="input-dark w-full p-2 rounded-lg text-sm">
+                            </div>
+                        </div>
+                        <button
+                            @click="$emit('banking-import', banking.dateFrom, banking.dateTo)"
+                            :disabled="banking.syncsUsed >= 4 || banking.importing"
+                            class="w-full py-2 rounded-lg text-xs font-bold transition-colors"
+                            :class="banking.syncsUsed >= 4 ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700 text-white'">
+                            {{ banking.importing ? '⏳ Importuję...' : '📥 Importuj z ING' }}
+                        </button>
+                        <button
+                            @click="$emit('banking-sync')"
+                            :disabled="banking.syncsUsed >= 4 || banking.syncing"
+                            class="w-full py-2 rounded-lg text-xs font-bold transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200">
+                            {{ banking.syncing ? '⏳ Synchronizuję...' : '🔄 Podgląd (bez importu)' }}
+                        </button>
+                        <p v-if="banking.syncsUsed >= 4" class="text-xs text-red-400 text-center">
+                            Limit dzienny wyczerpany. Reset o północy.
+                        </p>
+                        <p v-if="banking.lastImportResult" class="text-xs text-green-400 text-center mt-2">
+                            {{ banking.lastImportResult }}
+                        </p>
+                    </div>
+
+                    <!-- Połącz z bankiem -->
+                    <div v-else>
+                        <button @click="$emit('banking-connect')" class="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">
+                            🔗 Połącz z ING Bank Śląski
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="userRole === 'viewer'" class="mt-4 p-3 bg-slate-800/50 rounded-xl text-center">
+                    <p class="text-xs text-slate-500">👁️ Tryb podglądu — tylko odczyt</p>
+                </div>
+            </div>`
 }

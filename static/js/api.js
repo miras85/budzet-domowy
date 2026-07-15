@@ -169,3 +169,27 @@ export const importCSV = {
         return authFetch('/api/import/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_id: accountId, transactions }) });
     }
 };
+
+export const banking = {
+    async getStatus() {
+        const res = await authFetch('/api/banking/status');
+        return await res.json();
+    },
+    async connect(bankName) {
+        const res = await authFetch(`/api/banking/connect?bank_name=${encodeURIComponent(bankName)}`, {
+            method: 'POST'
+        });
+        return await res.json();
+    },
+    async sync() {
+        const res = await authFetch('/api/banking/sync', { method: 'POST' });
+        return await res.json();
+    },
+    async import(dateFrom, dateTo) {
+        const res = await authFetch(
+            `/api/banking/import?date_from=${dateFrom}&date_to=${dateTo}`,
+            { method: 'POST' }
+        );
+        return await res.json();
+    }
+};

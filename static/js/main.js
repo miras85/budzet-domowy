@@ -1,6 +1,6 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js?v=57';
+import * as API from './api.js?v=58';
 import * as Charts from './charts.js';
 
 // Import Komponentów
@@ -9,7 +9,7 @@ import DashboardView from './components/DashboardView.js?v=56';
 import AccountsView from './components/AccountsView.js?v=2';
 import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
-import SettingsView from './components/SettingsView.js?v=53';
+import SettingsView from './components/SettingsView.js?v=54';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
@@ -72,6 +72,19 @@ const app = createApp({
             goals: [], overrides: [], recurringList: [], duePayments: [],
             security: { oldPassword: '', newPassword: '', newUsername: '', newUserPass: '', inviteLink: '', inviteExpires: '' },
             userRole: 'admin',
+            
+            banking: {
+                connected: false,
+                bankName: '',
+                validUntil: '',
+                lastSync: null,
+                syncsUsed: 0,
+                dateFrom: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
+                dateTo: new Date().toISOString().split('T')[0],
+                importing: false,
+                syncing: false,
+                lastImportResult: ''
+            },
             
             // Nowe obiekty
             newTx: { description: '', amount: '', type: 'expense', account_id: null, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] },
@@ -350,7 +363,7 @@ const app = createApp({
             this.notify('info', 'Wylogowano');
         },
         
-        refreshAllData() { this.fetchData(); this.fetchAccounts(); this.fetchLoans(); this.fetchGoals(); this.fetchCategories(); this.fetchOverrides(); this.fetchRecurring(); this.checkDuePayments(); },
+        refreshAllData() { this.fetchData(); this.fetchAccounts(); this.fetchLoans(); this.fetchGoals(); this.fetchCategories(); this.fetchOverrides(); this.fetchRecurring(); this.checkDuePayments(); if (this.userRole === 'admin') { this.loadBankingStatus(); } },
         async fetchData() { if (!this.isLoggedIn) return; try { this.dashboard = await API.finance.getDashboard(this.periodOffset); if (this.accounts.length > 0 && !this.newTx.account_id) this.newTx.account_id = this.accounts[0].id; if (this.viewMode === 'chart') this.renderChart(); } catch (e) { console.error(e); } },
         async fetchAccounts() { if(this.isLoggedIn) this.accounts = await API.accounts.getAll(); },
         async fetchLoans() {
@@ -608,6 +621,58 @@ const app = createApp({
                 this.notify('success', "Link zaproszenia wygenerowany!");
             } catch(e) {
                 this.notify('error', "Błąd generowania zaproszenia");
+            }
+        },
+        
+        async loadBankingStatus() {
+            try {
+                const data = await API.banking.getStatus();
+                this.banking.connected = data.connected;
+                if (data.connected) {
+                    this.banking.bankName = data.bank_name;
+                    this.banking.validUntil = data.valid_until;
+                    this.banking.lastSync = data.last_sync;
+                    this.banking.syncsUsed = data.syncs_used_today || 0;
+                }
+            } catch(e) {
+                console.log('Banking status error:', e);
+            }
+        },
+
+        async bankingConnect() {
+            try {
+                const data = await API.banking.connect('ING Bank Śląski');
+                window.location.href = data.auth_url;
+            } catch(e) {
+                this.notify('error', 'Błąd połączenia z bankiem');
+            }
+        },
+
+        async bankingSync() {
+            this.banking.syncing = true;
+            try {
+                const data = await API.banking.sync();
+                this.banking.syncsUsed = data.syncs_used_today;
+                this.notify('success', `Pobrano ${data.transactions_count} transakcji (podgląd)`);
+            } catch(e) {
+                this.notify('error', e.message || 'Błąd synchronizacji');
+            } finally {
+                this.banking.syncing = false;
+            }
+        },
+
+        async bankingImport(dateFrom, dateTo) {
+            this.banking.importing = true;
+            this.banking.lastImportResult = '';
+            try {
+                const data = await API.banking.import(dateFrom, dateTo);
+                this.banking.lastImportResult = `✅ Zaimportowano: ${data.imported}, pominięto: ${data.skipped}`;
+                this.notify('success', `Zaimportowano ${data.imported} transakcji!`);
+                await this.refreshAllData();
+            } catch(e) {
+                this.notify('error', e.message || 'Błąd importu');
+            } finally {
+                this.banking.importing = false;
             }
         },
 
