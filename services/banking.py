@@ -175,8 +175,11 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
         debtor_account = get_account_by_bban(db, debtor_bban, user_id) if debtor_bban else None
         creditor_account = get_account_by_bban(db, creditor_bban, user_id) if creditor_bban else None
 
-        if debtor_account and creditor_account:
+       if debtor_account and creditor_account:
             # Oba konta są nasze — to transfer wewnętrzny!
+            # Importuj TYLKO stronę DBIT (wydatek z konta źródłowego)
+            if indicator != "DBIT":
+                return None  # Pomiń stronę CRDT — zapobiega duplikatom
             tx_type = "transfer"
             source_account_id = debtor_account.id
             target_account_id = creditor_account.id
@@ -235,7 +238,8 @@ def parse_ing_transactions(transactions: list, default_account_id: int,
     for tx in transactions:
         try:
             parsed = parse_ing_transaction(tx, default_account_id, db, user_id)
-            result.append(parsed)
+            if parsed is not None:  # Pomiń CRDT strony transferów wewnętrznych
+                result.append(parsed)
         except Exception as e:
             print(f"⚠️ Błąd parsowania transakcji: {e}")
             continue

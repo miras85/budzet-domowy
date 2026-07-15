@@ -243,16 +243,34 @@ def import_transactions(
                     skipped += 1
                     continue
 
-            new_tx = models.Transaction(
-                date=tx_data["date"],
-                amount=tx_data["amount"],
-                description=tx_data["description"],
-                type=tx_data["type"],
-                status="zrealizowana",
-                account_id=tx_data["account_id"],
-                target_account_id=tx_data.get("target_account_id"),
-                category_id=None
-            )
+                # Auto-kategoryzacja na podstawie historii
+                category_id = None
+                if tx_data["type"] != "transfer":
+                    # Szukaj podobnej transakcji w historii
+                    desc_prefix = tx_data["description"][:25]
+                    similar = db.query(models.Transaction).join(
+                        models.Account,
+                        models.Transaction.account_id == models.Account.id
+                    ).filter(
+                        models.Account.user_id == current_user.id,
+                        models.Transaction.category_id.isnot(None),
+                        models.Transaction.type == tx_data["type"],
+                        models.Transaction.description.ilike(f"%{desc_prefix}%")
+                    ).order_by(models.Transaction.id.desc()).first()
+
+                    if similar:
+                        category_id = similar.category_id
+
+                new_tx = models.Transaction(
+                    date=tx_data["date"],
+                    amount=tx_data["amount"],
+                    description=tx_data["description"],
+                    type=tx_data["type"],
+                    status="zrealizowana",
+                    account_id=tx_data["account_id"],
+                    target_account_id=tx_data.get("target_account_id"),
+                    category_id=category_id
+                )
             db.add(new_tx)
             db.flush()
 
