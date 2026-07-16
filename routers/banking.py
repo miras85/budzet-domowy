@@ -105,7 +105,7 @@ def sync_transactions(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(database.get_current_user)
 ):
-    """Podgląd transakcji z banku (bez zapisu) — max 4x/24h"""
+    """Podgląd transakcji z banku (bez zapisu) — max 4x/24h + debounce 60s"""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Tylko admin może synchronizować")
 
@@ -117,19 +117,26 @@ def sync_transactions(
     if not session:
         raise HTTPException(status_code=404, detail="Brak aktywnego połączenia z bankiem")
 
-    # Throttling PSD2 — max 4 synchronizacje / 24h
+    from datetime import timezone
+
+    # Throttling krótkoterminowy — min 60 sekund między KAŻDĄ próbą (nawet nieudaną)
+    if session.last_sync:
+        now = datetime.now(timezone.utc)
+        last = session.last_sync
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        seconds_since_last = (now - last).total_seconds()
+        if seconds_since_last < 60:
+            wait = int(60 - seconds_since_last)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Poczekaj jeszcze {wait} sekund przed kolejnym zapytaniem (ochrona przed spam)."
+            )
+
+    # Throttling PSD2 — max 4 synchronizacje / 24h (tylko udane)
     today = datetime.now().date()
     if session.sync_count_date == today:
         if session.sync_count_today >= 4:
-            # Oblicz kiedy reset
-            if session.last_sync:
-                from datetime import timezone
-                now = datetime.now(timezone.utc)
-                last = session.last_sync
-                if last.tzinfo is None:
-                    last = last.replace(tzinfo=timezone.utc)
-                next_reset = last.replace(hour=0, minute=0, second=0) + timedelta(days=1)
-                hours_left = int((next_reset - now).total_seconds() / 3600)
             raise HTTPException(
                 status_code=429,
                 detail=f"Limit ING: maksymalnie 4 synchronizacje dziennie. Użyto: {session.sync_count_today}/4. Reset o północy."
@@ -138,6 +145,10 @@ def sync_transactions(
         # Nowy dzień — reset licznika
         session.sync_count_today = 0
         session.sync_count_date = today
+
+    # Zapisz próbę NATYCHMIAST (dla debounce) — niezależnie od wyniku
+    session.last_sync = datetime.now()
+    db.commit()
 
     try:
         accounts = banking_service.get_session_accounts(session.session_id)
@@ -166,10 +177,9 @@ def sync_transactions(
             db=db, user_id=current_user.id
         )
 
-        # Zaktualizuj licznik i last_sync
+        # SUKCES — zwiększ licznik dzienny
         session.sync_count_today = (session.sync_count_today or 0) + 1
         session.sync_count_date = today
-        session.last_sync = datetime.now()
         db.commit()
 
         return {
@@ -181,6 +191,7 @@ def sync_transactions(
         }
 
     except HTTPException:
+        # BŁĄD (np. 429 z ING) — last_sync już zapisany wyżej, licznik dzienny NIE rośnie
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
