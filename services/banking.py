@@ -100,6 +100,11 @@ def get_transactions(session_id: str, account_uid: str,
         headers=headers,
         params=params
     )
+    if r.status_code == 429:
+        raise HTTPException(
+            status_code=429,
+            detail="ING chwilowo blokuje zapytania (rate limit). Poczekaj kilka minut i spróbuj ponownie."
+        )
     if r.status_code != 200:
         raise HTTPException(
             status_code=500,
