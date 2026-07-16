@@ -204,6 +204,18 @@ export default {
                         <p v-if="banking.lastImportResult" class="text-xs text-green-400 text-center mt-2">
                             {{ banking.lastImportResult }}
                         </p>
+                        <div v-if="banking.previewTransactions && banking.previewTransactions.length > 0" class="mt-3 space-y-1 max-h-60 overflow-y-auto">
+                            <p class="text-xs text-slate-400 uppercase font-bold mb-2">Podgląd (pierwsze 5):</p>
+                            <div v-for="tx in banking.previewTransactions" :key="tx.reference" class="text-xs bg-slate-800 p-2 rounded-lg">
+                                <div class="flex justify-between">
+                                    <span :class="tx.type === 'expense' ? 'text-red-400' : tx.type === 'income' ? 'text-green-400' : 'text-blue-400'">
+                                        {{ tx.type === 'expense' ? '↓' : tx.type === 'income' ? '↑' : '⇄' }} {{ tx.amount }} PLN
+                                    </span>
+                                    <span class="text-slate-500">{{ tx.date }}</span>
+                                </div>
+                                <div class="text-slate-400 truncate">{{ tx.description }}</div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Połącz z bankiem -->

@@ -1,6 +1,6 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js?v=58';
+import * as API from './api.js?v=59';
 import * as Charts from './charts.js';
 
 // Import Komponentów
@@ -9,7 +9,7 @@ import DashboardView from './components/DashboardView.js?v=56';
 import AccountsView from './components/AccountsView.js?v=2';
 import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
-import SettingsView from './components/SettingsView.js?v=54';
+import SettingsView from './components/SettingsView.js?v=55';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
@@ -83,7 +83,8 @@ const app = createApp({
                 dateTo: new Date().toISOString().split('T')[0],
                 importing: false,
                 syncing: false,
-                lastImportResult: ''
+                lastImportResult: '',
+                previewTransactions: []
             },
             
             // Nowe obiekty
@@ -652,8 +653,10 @@ const app = createApp({
             this.banking.syncing = true;
             try {
                 const data = await API.banking.sync();
-                this.banking.syncsUsed = data.syncs_used_today;
-                this.notify('success', `Pobrano ${data.transactions_count} transakcji (podgląd)`);
+                console.log('Banking sync response:', data);
+                this.banking.syncsUsed = data.syncs_used_today ?? 0;
+                this.banking.previewTransactions = data.preview || [];
+                this.notify('success', `Pobrano ${data.transactions_count || 0} transakcji (podgląd)`);
             } catch(e) {
                 this.notify('error', e.message || 'Błąd synchronizacji');
             } finally {
