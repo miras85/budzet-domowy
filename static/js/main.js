@@ -1,6 +1,6 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js?v=59';
+import * as API from './api.js?v=60';
 import * as Charts from './charts.js';
 
 // Import Komponentów

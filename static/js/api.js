@@ -179,17 +179,23 @@ export const banking = {
         const res = await authFetch(`/api/banking/connect?bank_name=${encodeURIComponent(bankName)}`, {
             method: 'POST'
         });
-        return await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Błąd połączenia z bankiem');
+        return data;
     },
     async sync() {
         const res = await authFetch('/api/banking/sync', { method: 'POST' });
-        return await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Błąd synchronizacji');
+        return data;
     },
     async import(dateFrom, dateTo) {
         const res = await authFetch(
             `/api/banking/import?date_from=${dateFrom}&date_to=${dateTo}`,
             { method: 'POST' }
         );
-        return await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Błąd importu');
+        return data;
     }
 };
