@@ -253,19 +253,37 @@ def import_transactions(
         skipped = 0
         from utils import update_balance
 
+        print(f"[IMPORT] Zakres {date_from} → {date_to}: "
+              f"surowych z API={len(all_transactions)}, sparsowanych={len(parsed)}, "
+              f"pominięto przy parsowaniu (transfery CRDT/błędy)={len(all_transactions) - len(parsed)}")
+
         for tx_data in parsed:
-            # Deduplikacja: data + kwota + opis + konto + typ
-            # (spójna z importem CSV — save_imported_transactions)
-            existing = db.query(models.Transaction).filter(
-                models.Transaction.date == tx_data["date"],
-                models.Transaction.amount == tx_data["amount"],
-                models.Transaction.description == tx_data["description"],
-                models.Transaction.account_id == tx_data["account_id"],
-                models.Transaction.type == tx_data["type"]
-            ).first()
+            ref = tx_data.get("reference") or ""
+
+            # Deduplikacja: 1) po unikalnym identyfikatorze bankowym (entry_reference)
+            existing = None
+            if ref:
+                existing = db.query(models.Transaction).filter(
+                    models.Transaction.bank_reference == ref
+                ).first()
+
+            # 2) fallback dla starych rekordów bez bank_reference (zaimportowanych
+            #    przed migracją) — sygnatura, ale TYLKO gdy bank_reference jest NULL,
+            #    żeby nie odrzucać legalnych identycznych transakcji z tej samej paczki
+            if not existing:
+                existing = db.query(models.Transaction).filter(
+                    models.Transaction.bank_reference.is_(None),
+                    models.Transaction.date == tx_data["date"],
+                    models.Transaction.amount == tx_data["amount"],
+                    models.Transaction.description == tx_data["description"],
+                    models.Transaction.account_id == tx_data["account_id"],
+                    models.Transaction.type == tx_data["type"]
+                ).first()
 
             if existing:
                 skipped += 1
+                print(f"[IMPORT] SKIP duplikat ref={ref!r} {tx_data['date']} "
+                      f"{tx_data['amount']} {tx_data['type']} {tx_data['description'][:40]!r}")
                 continue
 
             new_tx = models.Transaction(
@@ -276,7 +294,8 @@ def import_transactions(
                 status="zrealizowana",
                 account_id=tx_data["account_id"],
                 target_account_id=tx_data.get("target_account_id"),
-                category_id=tx_data.get("category_id")
+                category_id=tx_data.get("category_id"),
+                bank_reference=ref or None
             )
             db.add(new_tx)
             db.flush()
@@ -292,6 +311,8 @@ def import_transactions(
             )
 
             imported += 1
+            print(f"[IMPORT] ADD ref={ref!r} {tx_data['date']} "
+                  f"{tx_data['amount']} {tx_data['type']} {tx_data['description'][:40]!r}")
 
         # Zwiększ licznik dzienny (import też zużywa limit ING) z resetem na nowy dzień
         today = datetime.now().date()

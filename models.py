@@ -89,6 +89,7 @@ class Transaction(Base):
     target_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     loan_id = Column(Integer, ForeignKey("loans.id"), nullable=True)
+    bank_reference = Column(String(255), nullable=True, index=True)
 
     account = relationship("Account", foreign_keys=[account_id])
     target_account = relationship("Account", foreign_keys=[target_account_id])

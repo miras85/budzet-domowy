@@ -252,6 +252,11 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     # dacie transakcji niż booking_date.
     tx_date = tx.get("transaction_date") or tx.get("value_date") or tx.get("booking_date")
 
+    print(f"[PARSE] booking={tx.get('booking_date')} value={tx.get('value_date')} "
+          f"transaction={tx.get('transaction_date')} status={tx.get('status')} "
+          f"-> data={tx_date} ref={tx.get('entry_reference')!r} "
+          f"kwota={amount} typ={tx_type}")
+
     description = " | ".join(filter(None, description_parts))
     if not description:
         description = f"Transakcja ING {tx_date or ''}"
