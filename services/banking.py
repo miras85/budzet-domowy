@@ -11,6 +11,12 @@ PEM_PATH = os.getenv("ENABLE_BANKING_PEM_PATH", "/home/ubuntu/homebudget/1c02300
 API_BASE = "https://api.enablebanking.com"
 REDIRECT_URL = os.getenv("ENABLE_BANKING_REDIRECT_URL", "https://budzet-domowy.pl/api/banking/callback")
 
+# Mapowanie ostatnich 4 cyfr numeru karty -> właściciel (dopisywany do opisu)
+CARD_OWNERS = {
+    "9820": "Kasia",
+    "5831": "Mirek",
+}
+
 
 def get_auth_headers() -> dict:
     """Generuje JWT token i zwraca headers do API"""
@@ -172,6 +178,22 @@ def _extract_date_from_text(text: str):
         return None
 
 
+def detect_card_owner(text: str):
+    """
+    Rozpoznaje właściciela karty po ostatnich 4 cyfrach numeru karty w tytule
+    płatności kartą (np. '... 9820 ...'). Zwraca imię lub None.
+    Wymaga kontekstu 'kart' i dopasowuje 4 cyfry jako osobny token
+    (nie fragment dłuższej liczby, np. numeru referencyjnego).
+    """
+    import re
+    if not text or "kart" not in text.lower():
+        return None
+    for suffix, name in CARD_OWNERS.items():
+        if re.search(rf'(?<!\d){suffix}(?!\d)', text):
+            return name
+    return None
+
+
 def find_category_for(db, description: str, tx_type: str, user_id: int):
     """
     Auto-kategoryzacja na podstawie historii — dopasowanie po słowie kluczowym
@@ -289,6 +311,14 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     description = " | ".join(filter(None, description_parts))
     if not description:
         description = f"Transakcja ING {tx_date or ''}"
+
+    # Dopisz właściciela karty w nawiasie na podstawie ostatnich 4 cyfr numeru karty.
+    # Szukamy w pełnym tekście (opis + wszystkie linie remittance), bo numer karty
+    # może być w innej linii niż zbudowany opis.
+    search_text = " ".join(filter(None, description_parts + [str(r) for r in remittance]))
+    card_owner = detect_card_owner(search_text)
+    if card_owner:
+        description = f"{description} ({card_owner})"
 
     result = {
         "date": tx_date,
