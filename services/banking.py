@@ -154,6 +154,24 @@ def get_account_by_bban(db, bban: str, user_id: int):
     return None
 
 
+def _extract_date_from_text(text: str):
+    """
+    Wyciąga datę w formacie DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY z tekstu
+    (np. z tytułu 'PŁATNOŚĆ KARTĄ 04.07.2026 ...'). Zwraca 'YYYY-MM-DD' lub None.
+    """
+    import re
+    from datetime import date as _date
+    if not text:
+        return None
+    m = re.search(r'(\d{2})[.\-/](\d{2})[.\-/](\d{4})', text)
+    if not m:
+        return None
+    try:
+        return _date(int(m.group(3)), int(m.group(2)), int(m.group(1))).isoformat()
+    except ValueError:
+        return None
+
+
 def find_category_for(db, description: str, tx_type: str, user_id: int):
     """
     Auto-kategoryzacja na podstawie historii — dopasowanie po słowie kluczowym
@@ -247,13 +265,24 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
         if remittance:
             description_parts.append(remittance[0])
 
-    # Data księgowania — ING często księguje płatności kartą (zwł. weekendowe)
-    # na kolejny dzień roboczy. transaction_date/value_date jest bliższe rzeczywistej
-    # dacie transakcji niż booking_date.
-    tx_date = tx.get("transaction_date") or tx.get("value_date") or tx.get("booking_date")
+    # Data transakcji. ING często księguje płatności kartą (zwł. weekendowe)
+    # na kolejny dzień roboczy, więc booking_date bywa mylące.
+    # Priorytet:
+    #  1) data z tytułu płatności kartą ('PŁATNOŚĆ KARTĄ DD.MM.YYYY') — realna data zakupu
+    #  2) transaction_date z API
+    #  3) value_date z API
+    #  4) booking_date z API
+    api_date = tx.get("transaction_date") or tx.get("value_date") or tx.get("booking_date")
+
+    desc_text = " ".join([p for p in description_parts if p])
+    card_date = None
+    if "kart" in desc_text.lower():
+        card_date = _extract_date_from_text(desc_text)
+
+    tx_date = card_date or api_date
 
     print(f"[PARSE] booking={tx.get('booking_date')} value={tx.get('value_date')} "
-          f"transaction={tx.get('transaction_date')} status={tx.get('status')} "
+          f"transaction={tx.get('transaction_date')} card_title={card_date} status={tx.get('status')} "
           f"-> data={tx_date} ref={tx.get('entry_reference')!r} "
           f"kwota={amount} typ={tx_type}")
 
