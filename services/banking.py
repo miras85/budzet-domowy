@@ -154,6 +154,30 @@ def get_account_by_bban(db, bban: str, user_id: int):
     return None
 
 
+def find_category_for(db, description: str, tx_type: str, user_id: int):
+    """
+    Auto-kategoryzacja na podstawie historii — dopasowanie po słowie kluczowym
+    (pierwsze słowo > 3 znaki) z transakcji o tym samym typie. Zwraca category_id lub None.
+    """
+    if not (db and user_id and description) or tx_type == "transfer":
+        return None
+    import re
+    from models import Transaction, Account
+    words = [w for w in re.split(r"\s+", description) if len(w) > 3]
+    if not words:
+        return None
+    keyword = words[0]
+    similar = db.query(Transaction).join(
+        Account, Transaction.account_id == Account.id
+    ).filter(
+        Account.user_id == user_id,
+        Transaction.category_id.isnot(None),
+        Transaction.type == tx_type,
+        Transaction.description.ilike(f"%{keyword}%")
+    ).order_by(Transaction.id.desc()).first()
+    return similar.category_id if similar else None
+
+
 def parse_ing_transaction(tx: dict, default_account_id: int,
                           db=None, user_id: int = None) -> dict:
     """
@@ -223,18 +247,24 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
         if remittance:
             description_parts.append(remittance[0])
 
+    # Data księgowania — ING często księguje płatności kartą (zwł. weekendowe)
+    # na kolejny dzień roboczy. transaction_date/value_date jest bliższe rzeczywistej
+    # dacie transakcji niż booking_date.
+    tx_date = tx.get("transaction_date") or tx.get("value_date") or tx.get("booking_date")
+
     description = " | ".join(filter(None, description_parts))
     if not description:
-        description = f"Transakcja ING {tx.get('booking_date', '')}"
+        description = f"Transakcja ING {tx_date or ''}"
 
     result = {
-        "date": tx.get("booking_date"),
+        "date": tx_date,
         "amount": amount,
         "description": description,
         "type": tx_type,
         "status": "zrealizowana",
         "account_id": source_account_id,
         "reference": tx.get("entry_reference", ""),
+        "category_id": find_category_for(db, description, tx_type, user_id),
     }
 
     if target_account_id:
@@ -245,7 +275,7 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
 
 def parse_ing_transactions(transactions: list, default_account_id: int,
                            db=None, user_id: int = None) -> list:
-    """Konwertuje listę transakcji ING"""
+    """Konwertuje listę transakcji ING (posortowane chronologicznie: od najstarszej)"""
     result = []
     for tx in transactions:
         try:
@@ -255,5 +285,12 @@ def parse_ing_transactions(transactions: list, default_account_id: int,
         except Exception as e:
             print(f"⚠️ Błąd parsowania transakcji: {e}")
             continue
+
+    # ING zwraca transakcje od najnowszej. Odwracamy (→ najstarsza pierwsza),
+    # a następnie STABILNIE sortujemy rosnąco po dacie. Stabilny sort zachowuje
+    # kolejność wewnątrz tego samego dnia (najstarsza pierwsza). Dzięki temu
+    # kolejność wstawiania do bazy (rosnące id) = kolejność chronologiczna.
+    result.reverse()
+    result.sort(key=lambda x: (x.get("date") or ""))
     return result
 

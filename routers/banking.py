@@ -93,12 +93,21 @@ def get_banking_status(
     if not session:
         return {"connected": False}
 
+    # Licznik dzienny z resetem na nowy dzień (bez zapisu do bazy — tylko odczyt)
+    today = datetime.now().date()
+    if session.sync_count_date == today:
+        syncs_used = session.sync_count_today or 0
+    else:
+        syncs_used = 0
+
     return {
         "connected": True,
         "bank_name": session.bank_name,
         "status": session.status,
         "valid_until": str(session.valid_until),
-        "last_sync": str(session.last_sync) if session.last_sync else None
+        "last_sync": str(session.last_sync) if session.last_sync else None,
+        "syncs_used_today": syncs_used,
+        "syncs_remaining_today": max(0, 4 - syncs_used)
     }
 @router.post("/sync")
 def sync_transactions(
@@ -242,51 +251,37 @@ def import_transactions(
 
         imported = 0
         skipped = 0
+        from utils import update_balance
 
         for tx_data in parsed:
-            # Deduplikacja po reference
-            reference = tx_data.get("reference", "")
-            if reference:
-                existing = db.query(models.Transaction).filter(
-                    models.Transaction.description.like(f"%{reference}%")
-                ).first()
-                if existing:
-                    skipped += 1
-                    continue
+            # Deduplikacja: data + kwota + opis + konto + typ
+            # (spójna z importem CSV — save_imported_transactions)
+            existing = db.query(models.Transaction).filter(
+                models.Transaction.date == tx_data["date"],
+                models.Transaction.amount == tx_data["amount"],
+                models.Transaction.description == tx_data["description"],
+                models.Transaction.account_id == tx_data["account_id"],
+                models.Transaction.type == tx_data["type"]
+            ).first()
 
-                # Auto-kategoryzacja na podstawie historii
-                category_id = None
-                if tx_data["type"] != "transfer":
-                    # Szukaj podobnej transakcji w historii
-                    desc_prefix = tx_data["description"][:25]
-                    similar = db.query(models.Transaction).join(
-                        models.Account,
-                        models.Transaction.account_id == models.Account.id
-                    ).filter(
-                        models.Account.user_id == current_user.id,
-                        models.Transaction.category_id.isnot(None),
-                        models.Transaction.type == tx_data["type"],
-                        models.Transaction.description.ilike(f"%{desc_prefix}%")
-                    ).order_by(models.Transaction.id.desc()).first()
+            if existing:
+                skipped += 1
+                continue
 
-                    if similar:
-                        category_id = similar.category_id
-
-                new_tx = models.Transaction(
-                    date=tx_data["date"],
-                    amount=tx_data["amount"],
-                    description=tx_data["description"],
-                    type=tx_data["type"],
-                    status="zrealizowana",
-                    account_id=tx_data["account_id"],
-                    target_account_id=tx_data.get("target_account_id"),
-                    category_id=category_id
-                )
+            new_tx = models.Transaction(
+                date=tx_data["date"],
+                amount=tx_data["amount"],
+                description=tx_data["description"],
+                type=tx_data["type"],
+                status="zrealizowana",
+                account_id=tx_data["account_id"],
+                target_account_id=tx_data.get("target_account_id"),
+                category_id=tx_data.get("category_id")
+            )
             db.add(new_tx)
             db.flush()
 
             # Zaktualizuj saldo
-            from utils import update_balance
             update_balance(
                 db,
                 tx_data["account_id"],
@@ -298,6 +293,14 @@ def import_transactions(
 
             imported += 1
 
+        # Zwiększ licznik dzienny (import też zużywa limit ING) z resetem na nowy dzień
+        today = datetime.now().date()
+        if session.sync_count_date != today:
+            session.sync_count_today = 0
+            session.sync_count_date = today
+        session.sync_count_today = (session.sync_count_today or 0) + 1
+        session.sync_count_date = today
+
         session.last_sync = datetime.now()
         db.commit()
 
@@ -306,6 +309,8 @@ def import_transactions(
             "imported": imported,
             "skipped": skipped,
             "total": len(parsed),
+            "syncs_used_today": session.sync_count_today,
+            "syncs_remaining_today": max(0, 4 - session.sync_count_today),
             "period": f"{date_from} → {date_to}"
         }
 
