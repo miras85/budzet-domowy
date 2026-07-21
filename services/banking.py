@@ -4,6 +4,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException
 import os
+import utils
 
 # Konfiguracja Enable Banking
 APP_ID = os.getenv("ENABLE_BANKING_APP_ID", "1c02300f-053a-4c23-88ea-01144af2521d")
@@ -201,12 +202,10 @@ def find_category_for(db, description: str, tx_type: str, user_id: int):
     """
     if not (db and user_id and description) or tx_type == "transfer":
         return None
-    import re
     from models import Transaction, Account
-    words = [w for w in re.split(r"\s+", description) if len(w) > 3]
-    if not words:
+    keyword = utils.pick_category_keyword(description)
+    if not keyword:
         return None
-    keyword = words[0]
     similar = db.query(Transaction).join(
         Account, Transaction.account_id == Account.id
     ).filter(
@@ -228,6 +227,19 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     amount = float(tx.get("transaction_amount", {}).get("amount", 0))
     indicator = tx.get("credit_debit_indicator", "DBIT")
     tx_type = "expense" if indicator == "DBIT" else "income"
+
+    # --- LOG DIAGNOSTYCZNY (Krok 1): surowe dane odbiorcy/nadawcy ---
+    # Cel: potwierdzić, czy Enable Banking dostarcza creditor.name / debtor.name,
+    # których chcemy użyć jako pewnego klucza kategoryzacji (nazwa sklepu).
+    # Do usunięcia po analizie jednego importu.
+    _cred = tx.get("creditor") or {}
+    _debt = tx.get("debtor") or {}
+    print(f"[DIAG creditor/debtor] indicator={indicator} "
+          f"creditor.name={_cred.get('name')!r} "
+          f"debtor.name={_debt.get('name')!r} "
+          f"creditor_keys={list(_cred.keys())} "
+          f"debtor_keys={list(_debt.keys())} "
+          f"ref={tx.get('entry_reference')!r}")
 
     # Pobierz BBAN kont
     debtor_bban = None

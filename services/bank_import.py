@@ -46,34 +46,42 @@ def normalize_amount(value: str) -> float:
         print(f"⚠️ WARNING: Nie można sparsować kwoty: '{value}'")
         return 0.0
 
-def auto_categorize(db: Session, description: str, amount: float) -> Tuple[Optional[int], str]:
+def auto_categorize(db: Session, description: str, amount: float,
+                    user_id: Optional[int] = None) -> Tuple[Optional[int], str]:
     """
     Auto-kategoryzacja na podstawie historii.
     TYP (income/expense) jest ZAWSZE określany przez ZNAK kwoty z CSV!
     Szukamy tylko KATEGORII z podobnych transakcji.
+
+    WAŻNE: dopasowanie jest ograniczone do transakcji WŁAŚCICIELA (user_id),
+    żeby nie podpowiadać kategorii z danych innego użytkownika.
     """
     tx_type = "expense" if amount < 0 else "income"
-    
-    words = [w for w in re.split(r'\s+', description) if len(w) > 3]
-    
-    if not words:
+
+    keyword = utils.pick_category_keyword(description)
+    if not keyword:
         return None, tx_type
 
-    keyword = words[0]
-    similar_tx = db.query(models.Transaction)\
-        .filter(models.Transaction.description.ilike(f"%{keyword}%"))\
-        .filter(models.Transaction.category_id.isnot(None))\
-        .order_by(models.Transaction.date.desc())\
-        .first()
+    query = db.query(models.Transaction)
+    if user_id is not None:
+        query = query.join(
+            models.Account, models.Transaction.account_id == models.Account.id
+        ).filter(models.Account.user_id == user_id)
+
+    similar_tx = query.filter(
+        models.Transaction.description.ilike(f"%{keyword}%"),
+        models.Transaction.category_id.isnot(None),
+        models.Transaction.type == tx_type,
+    ).order_by(models.Transaction.date.desc()).first()
 
     if similar_tx:
         # Zwróć TYLKO kategorię, NIE typ!
         # Typ jest już poprawnie określony przez znak kwoty
-        return similar_tx.category_id, tx_type  # ← ZMIENIONE: tx_type (z CSV), nie similar_tx.type
-    
+        return similar_tx.category_id, tx_type
+
     return None, tx_type
 
-async def parse_bank_csv(db: Session, file: UploadFile):
+async def parse_bank_csv(db: Session, file: UploadFile, user_id: Optional[int] = None):
     content = await file.read()
     
     # 1. Wykrywanie kodowania
@@ -207,7 +215,7 @@ async def parse_bank_csv(db: Session, file: UploadFile):
                 errors_log.append(f"Niepoprawny format daty '{raw_date}'")
                 continue
 
-            cat_id, tx_type = auto_categorize(db, description, amount)
+            cat_id, tx_type = auto_categorize(db, description, amount, user_id)
 
             preview_data.append({
                 "date": str(date_obj),

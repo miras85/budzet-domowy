@@ -1,7 +1,38 @@
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
 import calendar
+import re
 import models
+
+# --- KATEGORYZACJA: WYBÓR SŁOWA KLUCZOWEGO ---
+# Słowa generyczne, które NIE niosą informacji o sprzedawcy/kategorii.
+# Pomijamy je przy dopasowaniu po pierwszym słowie opisu, bo inaczej
+# heurystyka łapie np. "PŁATNOŚĆ" / "PRZELEW" zamiast nazwy sklepu.
+CATEGORY_STOP_WORDS = {
+    "płatność", "płatnosc", "platnosc", "platność",
+    "przelew", "przelewy", "przel", "przelewem",
+    "zakup", "zakupy",
+    "karta", "kartą", "karty", "kartowa", "kartowy",
+    "blik", "transakcja", "transakcji", "transakcje",
+    "standing", "order", "polecenie", "zapłaty", "zaplaty",
+    "wpłata", "wplata", "wypłata", "wyplata",
+    "prowizja", "opłata", "oplata", "oplaty", "opłaty",
+    "przychodzący", "wychodzący", "przychodzacy", "wychodzacy",
+    "internetowy", "internetowa", "mobilna", "mobilny",
+}
+
+
+def pick_category_keyword(description: str):
+    """
+    Zwraca pierwsze sensowne słowo opisu (>3 znaki, nie stop-słowo)
+    do dopasowania kategorii po historii. None jeśli brak.
+    """
+    for w in re.split(r"\s+", description or ""):
+        token = w.strip().strip(".,:;|/\\\"'()[]").strip()
+        if len(token) > 3 and token.lower() not in CATEGORY_STOP_WORDS:
+            return token
+    return None
+
 
 # --- LOGIKA DAT ---
 def get_actual_payday(year, month, db: Session, user_id=None):

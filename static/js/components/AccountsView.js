@@ -18,7 +18,10 @@ export default {
                         <div class="text-xl font-bold text-blue-400 mt-1">{{ formatMoney(acc.balance) }}</div>
                     </div>
                     <div class="flex gap-2">
-                        <button v-if="userRole === 'admin'" @click="$emit('trigger-import', acc.id)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-yellow-400 transition-colors" title="Importuj CSV">📥</button>
+                        <!-- Import CSV ukryty: podstawowa ścieżka to ING (Enable Banking).
+                             Kod importu CSV zostaje jako backup - by przywrócić przycisk,
+                             zmień v-if z powrotem na userRole === 'admin'. -->
+                        <button v-if="false" @click="$emit('trigger-import', acc.id)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-yellow-400 transition-colors" title="Importuj CSV">📥</button>
                         <button v-if="userRole === 'admin'" @click="$emit('edit-account', acc)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-blue-400 transition-colors">✏️</button>
                         <button v-if="userRole === 'admin'" @click="$emit('delete-account', acc.id)" class="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-red-500 transition-colors">🗑️</button>
                     </div>

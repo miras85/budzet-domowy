@@ -12,11 +12,19 @@ router = APIRouter(prefix="/api", tags=["Finance"])
 # --- IMPORT CSV ---
 @router.post("/import/preview")
 async def preview_import(file: UploadFile = File(...), db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    return await bank_import.parse_bank_csv(db, file)
+    owner_id = database.get_data_owner_id(current_user, db)
+    return await bank_import.parse_bank_csv(db, file, owner_id)
 
 @router.post("/import/confirm")
 def confirm_import(data: schemas.ImportConfirm, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     owner_id = database.get_data_owner_id(current_user, db)
+    # Weryfikacja własności konta — nie pozwól importować na cudze konto
+    account = db.query(models.Account).filter(
+        models.Account.id == data.account_id,
+        models.Account.user_id == owner_id
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Konto nie istnieje")
     return bank_import.save_imported_transactions(db, data.account_id, data.transactions)
 
 # --- DASHBOARD & STATS ---
