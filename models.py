@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DECIMAL, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DECIMAL, Boolean, DateTime, UniqueConstraint, Index
 from datetime import datetime
 from sqlalchemy.orm import relationship
 from database import Base
@@ -140,6 +140,28 @@ class UserDataAccess(Base):
 
     user = relationship("User", foreign_keys=[user_id])
     owner = relationship("User", foreign_keys=[owner_id])
+
+class LearnedPattern(Base):
+    """
+    Nauczone dopasowania sprzedawca -> kategoria (per użytkownik).
+    Jeden wiersz na (user_id, merchant_token, category_id) z licznikiem trafień.
+    Przy sugestii wybieramy kategorię o NAJWYŻSZYM hit_count (najczęstszą),
+    a nie ostatnią. Dzięki temu pojedyncza pomyłka nie psuje wzorca.
+    """
+    __tablename__ = "learned_patterns"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    merchant_token = Column(String(100), nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
+    hit_count = Column(Integer, default=1, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'merchant_token', 'category_id',
+                         name='uq_learned_user_token_cat'),
+        Index('ix_learned_patterns_lookup', 'user_id', 'merchant_token'),
+    )
+
 
 class BankSession(Base):
     __tablename__ = "bank_sessions"

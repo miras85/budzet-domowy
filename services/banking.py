@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException
 import os
 import utils
+from services import categorization
 
 # Konfiguracja Enable Banking
 APP_ID = os.getenv("ENABLE_BANKING_APP_ID", "1c02300f-053a-4c23-88ea-01144af2521d")
@@ -379,7 +380,13 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
         "status": "zrealizowana",
         "account_id": source_account_id,
         "reference": tx.get("entry_reference", ""),
-        "category_id": find_category_for(db, description, tx_type, user_id, merchant_key),
+        # Warstwowa kategoryzacja: learned -> static -> history (patrz
+        # services/categorization.suggest_category). merchant_key (nazwa
+        # strukturalna z banku) ma priorytet nad zbudowanym opisem.
+        "category_id": categorization.suggest_category(
+            db, user_id=user_id, tx_type=tx_type,
+            merchant_key=merchant_key, description=description,
+        ),
     }
 
     if target_account_id:

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException
 import models, schemas
 import utils
+from services import categorization
 
 def normalize_amount(value: str) -> float:
     """
@@ -55,31 +56,20 @@ def auto_categorize(db: Session, description: str, amount: float,
 
     WAŻNE: dopasowanie jest ograniczone do transakcji WŁAŚCICIELA (user_id),
     żeby nie podpowiadać kategorii z danych innego użytkownika.
+
+    Sam dobór kategorii deleguje do warstwowego silnika
+    services/categorization.suggest_category (learned -> static -> history),
+    aby import CSV i import ING zachowywały się identycznie.
     """
     tx_type = "expense" if amount < 0 else "income"
 
-    keyword = utils.pick_category_keyword(description)
-    if not keyword:
+    if user_id is None:
         return None, tx_type
 
-    query = db.query(models.Transaction)
-    if user_id is not None:
-        query = query.join(
-            models.Account, models.Transaction.account_id == models.Account.id
-        ).filter(models.Account.user_id == user_id)
-
-    similar_tx = query.filter(
-        models.Transaction.description.ilike(f"%{keyword}%"),
-        models.Transaction.category_id.isnot(None),
-        models.Transaction.type == tx_type,
-    ).order_by(models.Transaction.date.desc()).first()
-
-    if similar_tx:
-        # Zwróć TYLKO kategorię, NIE typ!
-        # Typ jest już poprawnie określony przez znak kwoty
-        return similar_tx.category_id, tx_type
-
-    return None, tx_type
+    category_id = categorization.suggest_category(
+        db, user_id=user_id, tx_type=tx_type, description=description,
+    )
+    return category_id, tx_type
 
 async def parse_bank_csv(db: Session, file: UploadFile, user_id: Optional[int] = None):
     content = await file.read()

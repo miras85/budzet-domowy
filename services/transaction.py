@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import date
 import models, schemas, utils
 from sqlalchemy import func
+from services import categorization
 
 def create_transaction(db: Session, tx: schemas.TransactionCreate, user_id: int):
     """Tworzy nową transakcję z atomową aktualizacją sald"""
@@ -60,6 +61,15 @@ def create_transaction(db: Session, tx: schemas.TransactionCreate, user_id: int)
             utils.update_balance(db, tx.account_id, tx.amount, tx.type, tx.target_account_id, is_reversal=False)
             if tx.loan_id and tx.type == 'expense':
                 utils.update_loan_balance(db, tx.loan_id, tx.amount, is_reversal=False)
+
+        # Uczenie wzorca sprzedawca->kategoria z ręcznej operacji użytkownika
+        # (nie dotyczy transferów). learn_pattern łyka błędy i tylko flush-uje,
+        # commit poniżej utrwala wszystko razem.
+        if tx.type != 'transfer' and cat_id:
+            categorization.learn_pattern(
+                db, user_id=user_id, category_id=cat_id,
+                description=tx.description,
+            )
 
         db.commit()
         return new_tx
@@ -130,6 +140,14 @@ def update_transaction(db: Session, tx_id: int, tx_data: schemas.TransactionCrea
             utils.update_balance(db, tx_data.account_id, tx_data.amount, tx_data.type, tx_data.target_account_id, is_reversal=False)
             if tx_data.loan_id and tx_data.type == 'expense':
                 utils.update_loan_balance(db, tx_data.loan_id, tx_data.amount, is_reversal=False)
+
+        # Uczenie wzorca z korekty użytkownika: edycja kategorii transakcji
+        # (np. poprawa auto-kategorii po imporcie ING) to najsilniejszy sygnał.
+        if tx_data.type != 'transfer' and cat_id:
+            categorization.learn_pattern(
+                db, user_id=user_id, category_id=cat_id,
+                description=tx_data.description,
+            )
 
         db.commit()
         return old_tx
