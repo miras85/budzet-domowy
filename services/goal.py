@@ -126,6 +126,68 @@ def withdraw_goal(db: Session, goal_id: int, withdraw: schemas.GoalWithdraw):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Błąd wypłaty: {str(e)}")
 
+def reconcile_savings_goals(db: Session, user_id: int):
+    """Uzgadnia rezerwacje celów z realnym saldem kont oszczędnościowych.
+
+    Po imporcie przelewów saldo konta oszczędnościowego mogło spaść poniżej sumy
+    rezerwacji celów (current_amount). Wtedy 'dostępne' schodzi na minus, a cele
+    pokazują pieniądze, których już nie ma.
+
+    Zasada (ustalona z użytkownikiem):
+    - Jeśli saldo >= suma rezerwacji -> nic nie ruszamy (przelew zjadł tylko wolne
+      środki).
+    - Jeśli saldo < suma rezerwacji -> obniżamy cele o brakującą kwotę, zaczynając
+      od NAJNOWSZEGO celu (id malejąco), aż suma rezerwacji zrówna się z saldem.
+
+    Nie robi commitu — wywoływać wewnątrz transakcji (import robi commit sam).
+    Zwraca listę korekt do zalogowania.
+    """
+    adjustments = []
+
+    savings_accounts = db.query(models.Account).filter(
+        models.Account.user_id == user_id,
+        models.Account.is_savings == True
+    ).all()
+
+    for acc in savings_accounts:
+        balance = float(acc.balance)
+
+        # Cele tego konta, od najnowszego (spójne z finance.py: bez filtra is_archived)
+        goals = db.query(models.Goal).filter(
+            models.Goal.account_id == acc.id,
+            models.Goal.user_id == user_id
+        ).order_by(models.Goal.id.desc()).all()
+
+        reserved = sum(float(g.current_amount or 0) for g in goals)
+        shortfall = reserved - balance
+
+        # Tolerancja groszowa, żeby nie ruszać celów przy zaokrągleniach
+        if shortfall <= 0.005:
+            continue
+
+        for goal in goals:
+            if shortfall <= 0.005:
+                break
+            current = float(goal.current_amount or 0)
+            if current <= 0:
+                continue
+            cut = min(current, shortfall)
+            goal.current_amount = current - cut
+            shortfall -= cut
+
+            # Wpis audytowy (ujemny) — spójny z ręczną wypłatą z celu
+            db.add(models.GoalContribution(
+                goal_id=goal.id,
+                amount=-cut,
+                date=date.today()
+            ))
+            adjustments.append((goal.id, goal.name, cut))
+            print(f"[RECONCILE] Cel '{goal.name}' (id={goal.id}) obniżony o "
+                  f"{cut:.2f} zł (konto '{acc.name}' saldo={balance:.2f})")
+
+    return adjustments
+
+
 def transfer_goal(db: Session, goal_id: int, transfer: schemas.GoalTransfer):
     """Transfer między celami z atomową aktualizacją"""
     

@@ -314,6 +314,12 @@ def import_transactions(
             print(f"[IMPORT] ADD ref={ref!r} {tx_data['date']} "
                   f"{tx_data['amount']} {tx_data['type']} {tx_data['description'][:40]!r}")
 
+        # Uzgodnij cele z realnym saldem kont oszczędnościowych (po zmianach sald).
+        # Jeśli przelew wychodzący zjadł środki zarezerwowane na cele, obniż cele
+        # od najnowszego, aż suma rezerwacji zrówna się z saldem.
+        from services.goal import reconcile_savings_goals
+        goal_adjustments = reconcile_savings_goals(db, current_user.id)
+
         # Zwiększ licznik dzienny (import też zużywa limit ING) z resetem na nowy dzień
         today = datetime.now().date()
         if session.sync_count_date != today:
@@ -330,6 +336,7 @@ def import_transactions(
             "imported": imported,
             "skipped": skipped,
             "total": len(parsed),
+            "goals_adjusted": len(goal_adjustments),
             "syncs_used_today": session.sync_count_today,
             "syncs_remaining_today": max(0, 4 - session.sync_count_today),
             "period": f"{date_from} → {date_to}"
