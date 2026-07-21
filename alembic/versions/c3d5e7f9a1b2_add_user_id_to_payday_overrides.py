@@ -20,15 +20,15 @@ def upgrade():
     op.add_column('payday_overrides',
         sa.Column('user_id', sa.Integer(), nullable=True)
     )
-    # Backfill istniejących wierszy do głównego właściciela (id=1),
-    # tak jak w migracji BBAN. Zachowuje dotychczasowe okresy rozliczeniowe.
-    op.execute("UPDATE payday_overrides SET user_id = 1 WHERE user_id IS NULL")
-    op.create_foreign_key(
-        'fk_payday_overrides_user_id', 'payday_overrides', 'users',
-        ['user_id'], ['id']
+    # Backfill istniejących wierszy do głównego właściciela = najstarszy
+    # użytkownik (najniższe id, czyli oryginalny admin). Odporne na to,
+    # jakie realnie id ma admin. Zachowuje dotychczasowe okresy rozliczeniowe.
+    op.execute(
+        "UPDATE payday_overrides "
+        "SET user_id = (SELECT id FROM users ORDER BY id ASC LIMIT 1) "
+        "WHERE user_id IS NULL"
     )
 
 
 def downgrade():
-    op.drop_constraint('fk_payday_overrides_user_id', 'payday_overrides', type_='foreignkey')
     op.drop_column('payday_overrides', 'user_id')
