@@ -4,7 +4,7 @@ import models, utils
 from datetime import date
 
 def get_dashboard_data(db: Session, offset: int, user_id: int):
-    start_date, end_date = utils.get_billing_period(db, offset)
+    start_date, end_date = utils.get_billing_period(db, offset, user_id=user_id)
 
     def get_sum(query_filter):
         result = db.query(func.sum(models.Transaction.amount)).filter(query_filter).scalar()
@@ -155,7 +155,7 @@ def get_dashboard_data(db: Session, offset: int, user_id: int):
             cycles_left = 1
             check_offset = offset
             while True:
-                _, cycle_end = utils.get_billing_period(db, check_offset)
+                _, cycle_end = utils.get_billing_period(db, check_offset, user_id=user_id)
                 if cycle_end >= g.deadline:
                     break
                 cycles_left += 1
@@ -234,7 +234,7 @@ def get_trend_data(db: Session, user_id: int):
     data = []
     for i in range(5, -1, -1):
         offset = -i
-        start, end = utils.get_billing_period(db, offset)
+        start, end = utils.get_billing_period(db, offset, user_id=user_id)
         raw_inc = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.type == 'income',
             models.Transaction.status == 'zrealizowana',

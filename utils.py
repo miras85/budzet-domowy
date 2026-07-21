@@ -4,8 +4,14 @@ import calendar
 import models
 
 # --- LOGIKA DAT ---
-def get_actual_payday(year, month, db: Session):
-    override = db.query(models.PaydayOverride).filter(models.PaydayOverride.year == year, models.PaydayOverride.month == month).first()
+def get_actual_payday(year, month, db: Session, user_id=None):
+    q = db.query(models.PaydayOverride).filter(
+        models.PaydayOverride.year == year,
+        models.PaydayOverride.month == month
+    )
+    if user_id is not None:
+        q = q.filter(models.PaydayOverride.user_id == user_id)
+    override = q.first()
     if override: return date(year, month, override.day)
     try: base_date = date(year, month, 25)
     except ValueError: base_date = date(year, month, 1) + timedelta(days=27)
@@ -14,9 +20,9 @@ def get_actual_payday(year, month, db: Session):
     elif weekday == 6: return base_date - timedelta(days=2)
     return base_date
 
-def get_billing_period(db: Session, offset: int = 0):
+def get_billing_period(db: Session, offset: int = 0, user_id=None):
     today = date.today()
-    current_month_payday = get_actual_payday(today.year, today.month, db)
+    current_month_payday = get_actual_payday(today.year, today.month, db, user_id)
     if today < current_month_payday:
         base_month = today.month - 1
         base_year = today.year
@@ -28,11 +34,11 @@ def get_billing_period(db: Session, offset: int = 0):
     target_year = base_year
     while target_month > 12: target_month -= 12; target_year += 1
     while target_month < 1: target_month += 12; target_year -= 1
-    start_date = get_actual_payday(target_year, target_month, db)
+    start_date = get_actual_payday(target_year, target_month, db, user_id)
     next_m = target_month + 1
     next_y = target_year
     if next_m > 12: next_m = 1; next_y += 1
-    next_payday = get_actual_payday(next_y, next_m, db)
+    next_payday = get_actual_payday(next_y, next_m, db, user_id)
     end_date = next_payday - timedelta(days=1)
     return start_date, end_date
 

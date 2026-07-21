@@ -87,7 +87,7 @@ def get_goals(db: Session = Depends(database.get_db), current_user: models.User 
         models.Goal.is_archived == False,
         models.Goal.user_id == owner_id
     ).all()
-    start_date, end_date = utils.get_billing_period(db, 0)
+    start_date, end_date = utils.get_billing_period(db, 0, user_id=owner_id)
     result = []
     for g in goals:
         goal_data = {
@@ -102,7 +102,7 @@ def get_goals(db: Session = Depends(database.get_db), current_user: models.User 
         if remaining > 0:
             cycles_left = 1; check_offset = 0
             while True:
-                _, cycle_end = utils.get_billing_period(db, check_offset)
+                _, cycle_end = utils.get_billing_period(db, check_offset, user_id=owner_id)
                 if cycle_end >= g.deadline: break
                 cycles_left += 1; check_offset += 1
                 if cycles_left > 120: break
@@ -242,7 +242,7 @@ def get_loans(db: Session = Depends(database.get_db), current_user: models.User 
         models.Loan.user_id == owner_id
     ).order_by(models.Loan.next_payment_date).all()
     today = date.today()
-    start_date, end_date = utils.get_billing_period(db, 0)
+    start_date, end_date = utils.get_billing_period(db, 0, user_id=owner_id)
     overdue = []; urgent = []; upcoming = []; all_loans = []
     total_overdue = 0.0; total_urgent = 0.0; total_upcoming = 0.0; total_monthly_payments = 0.0
 
@@ -339,10 +339,17 @@ def update_category(cat_id: int, cat: schemas.CategoryCreate, db: Session = Depe
 @router.delete("/categories/{cat_id}")
 def delete_category(cat_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     owner_id = database.get_data_owner_id(current_user, db)
-    db.query(models.Category).filter(
+    db_cat = db.query(models.Category).filter(
         models.Category.id == cat_id,
         models.Category.user_id == owner_id
-    ).delete()
+    ).first()
+    if not db_cat:
+        raise HTTPException(status_code=404, detail="Kategoria nie istnieje")
+    # Odpinamy kategorię od transakcji, aby nie zostawić martwych referencji
+    db.query(models.Transaction).filter(
+        models.Transaction.category_id == cat_id
+    ).update({models.Transaction.category_id: None}, synchronize_session=False)
+    db.delete(db_cat)
     db.commit()
     return {"status": "deleted"}
 
@@ -394,39 +401,73 @@ def update_account(account_id: int, acc: schemas.AccountUpdate, db: Session = De
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
     owner_id = database.get_data_owner_id(current_user, db)
-    db.query(models.Transaction).filter(
-        models.Transaction.account_id == account_id
-    ).delete()
-    db.query(models.Account).filter(
+    # 1. Najpierw potwierdzamy własność konta - zanim cokolwiek skasujemy
+    db_acc = db.query(models.Account).filter(
         models.Account.id == account_id,
         models.Account.user_id == owner_id
-    ).delete()
-    db.commit()
-    return {"status": "deleted"}
+    ).first()
+    if not db_acc:
+        raise HTTPException(status_code=404, detail="Konto nie istnieje")
+    try:
+        # 2. Cele przypisane do konta (dot. kont oszczędnościowych) + ich wpłaty
+        goal_ids = [g.id for g in db.query(models.Goal.id).filter(
+            models.Goal.account_id == account_id,
+            models.Goal.user_id == owner_id
+        ).all()]
+        if goal_ids:
+            db.query(models.GoalContribution).filter(
+                models.GoalContribution.goal_id.in_(goal_ids)
+            ).delete(synchronize_session=False)
+            db.query(models.Goal).filter(
+                models.Goal.id.in_(goal_ids)
+            ).delete(synchronize_session=False)
+        # 3. Transakcje, których to konto jest źródłem - usuwamy
+        db.query(models.Transaction).filter(
+            models.Transaction.account_id == account_id
+        ).delete(synchronize_session=False)
+        # 4. Transakcje, gdzie konto było celem transferu - odpinamy target,
+        #    żeby nie skasować strony źródłowej z innego konta
+        db.query(models.Transaction).filter(
+            models.Transaction.target_account_id == account_id
+        ).update({models.Transaction.target_account_id: None}, synchronize_session=False)
+        # 5. Samo konto
+        db.delete(db_acc)
+        db.commit()
+        return {"status": "deleted"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
 
 # --- USTAWIENIA ---
 @router.get("/settings/payday-overrides")
 def get_payday_overrides(db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
-    return db.query(models.PaydayOverride).order_by(
+    owner_id = database.get_data_owner_id(current_user, db)
+    return db.query(models.PaydayOverride).filter(
+        models.PaydayOverride.user_id == owner_id
+    ).order_by(
         models.PaydayOverride.year.desc(),
         models.PaydayOverride.month.desc()
     ).all()
 
 @router.post("/settings/payday-overrides")
 def add_payday_override(ov: schemas.PaydayOverrideCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     existing = db.query(models.PaydayOverride).filter(
         models.PaydayOverride.year == ov.year,
-        models.PaydayOverride.month == ov.month
+        models.PaydayOverride.month == ov.month,
+        models.PaydayOverride.user_id == owner_id
     ).first()
     if existing: existing.day = ov.day
-    else: db.add(models.PaydayOverride(year=ov.year, month=ov.month, day=ov.day))
+    else: db.add(models.PaydayOverride(year=ov.year, month=ov.month, day=ov.day, user_id=owner_id))
     db.commit()
     return {"status": "ok"}
 
 @router.delete("/settings/payday-overrides/{id}")
 def delete_payday_override(id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)):
+    owner_id = database.get_data_owner_id(current_user, db)
     db.query(models.PaydayOverride).filter(
-        models.PaydayOverride.id == id
+        models.PaydayOverride.id == id,
+        models.PaydayOverride.user_id == owner_id
     ).delete()
     db.commit()
     return {"status": "deleted"}
@@ -445,7 +486,7 @@ def get_category_trend(cat_id: int, db: Session = Depends(database.get_db), curr
     total_sum = 0.0; months_with_data = 0
     for i in range(5, -1, -1):
         offset = -i
-        start, end = utils.get_billing_period(db, offset)
+        start, end = utils.get_billing_period(db, offset, user_id=owner_id)
         raw_sum = db.query(func.sum(models.Transaction.amount)).filter(
             models.Transaction.category_id == cat_id,
             models.Transaction.type == 'expense',

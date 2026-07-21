@@ -92,7 +92,7 @@ def check_due_payments(db: Session = Depends(database.get_db), current_user: mod
     import calendar
     owner_id = database.get_data_owner_id(current_user, db)
     today = date.today()
-    start_date, end_date = utils.get_billing_period(db, 0)
+    start_date, end_date = utils.get_billing_period(db, 0, user_id=owner_id)
 
     all_recs = db.query(models.RecurringTransaction).filter(
         models.RecurringTransaction.is_active == True,
