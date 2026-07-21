@@ -246,6 +246,7 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     # Wykryj transfer wewnętrzny
     source_account_id = default_account_id
     target_account_id = None
+    internal_side = None
 
     if db and user_id:
         debtor_account = get_account_by_bban(db, debtor_bban, user_id) if debtor_bban else None
@@ -253,12 +254,15 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
 
         if debtor_account and creditor_account:
             # Oba konta są nasze — to transfer wewnętrzny!
-            # Importuj TYLKO stronę DBIT (wydatek z konta źródłowego)
-            if indicator != "DBIT":
-                return None  # Pomiń stronę CRDT — zapobiega duplikatom
+            # NIE odrzucamy tu strony CRDT na ślepo: jeśli druga strona (DBIT)
+            # nie zostanie pobrana z API (np. drugie konto nie jest podłączone
+            # przez PSD2), stracilibyśmy przelew. Oznaczamy stronę (DBIT/CRDT)
+            # i parujemy dopiero na poziomie całej paczki (parse_ing_transactions),
+            # gdzie CRDT usuwamy TYLKO gdy istnieje odpowiadająca strona DBIT.
             tx_type = "transfer"
             source_account_id = debtor_account.id
             target_account_id = creditor_account.id
+            internal_side = indicator  # "DBIT" lub "CRDT"
         elif debtor_account and tx_type == "expense":
             source_account_id = debtor_account.id
         elif creditor_account and tx_type == "income":
@@ -334,6 +338,9 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     if target_account_id:
         result["target_account_id"] = target_account_id
 
+    if internal_side:
+        result["_internal_side"] = internal_side
+
     return result
 
 
@@ -344,11 +351,39 @@ def parse_ing_transactions(transactions: list, default_account_id: int,
     for tx in transactions:
         try:
             parsed = parse_ing_transaction(tx, default_account_id, db, user_id)
-            if parsed is not None:  # Pomiń CRDT strony transferów wewnętrznych
+            if parsed is not None:
                 result.append(parsed)
         except Exception as e:
             print(f"⚠️ Błąd parsowania transakcji: {e}")
             continue
+
+    # Sparuj strony transferów wewnętrznych. Każdy przelew między naszymi kontami
+    # może pojawić się dwukrotnie: jako DBIT (wychodzący z konta źródłowego) i CRDT
+    # (przychodzący na docelowe). Jeśli mamy stronę DBIT, pomijamy odpowiadającą jej
+    # stronę CRDT (ta sama para kont + kwota). Jeśli strony DBIT NIE ma (drugie konto
+    # nie było pobrane z API), zachowujemy CRDT — inaczej zgubilibyśmy przelew.
+    dbit_keys = set()
+    for p in result:
+        if p.get("_internal_side") == "DBIT":
+            dbit_keys.add((p.get("account_id"), p.get("target_account_id"),
+                           round(float(p.get("amount") or 0), 2)))
+
+    deduped = []
+    for p in result:
+        if p.get("_internal_side") == "CRDT":
+            key = (p.get("account_id"), p.get("target_account_id"),
+                   round(float(p.get("amount") or 0), 2))
+            if key in dbit_keys:
+                print(f"[PARSE] Pomijam stronę CRDT transferu (jest DBIT): "
+                      f"{p.get('account_id')}->{p.get('target_account_id')} "
+                      f"{p.get('amount')} {p.get('description', '')[:40]!r}")
+                continue  # jest strona DBIT — pomiń duplikat CRDT
+            print(f"[PARSE] Zachowuję stronę CRDT transferu (brak DBIT w paczce): "
+                  f"{p.get('account_id')}->{p.get('target_account_id')} "
+                  f"{p.get('amount')} {p.get('description', '')[:40]!r}")
+        p.pop("_internal_side", None)
+        deduped.append(p)
+    result = deduped
 
     # ING zwraca transakcje od najnowszej. Odwracamy (→ najstarsza pierwsza),
     # a następnie STABILNIE sortujemy rosnąco po dacie. Stabilny sort zachowuje
