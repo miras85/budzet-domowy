@@ -1,6 +1,7 @@
 # services/banking.py
 import jwt
 import requests
+import re
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException
 import os
@@ -195,15 +196,47 @@ def detect_card_owner(text: str):
     return None
 
 
-def find_category_for(db, description: str, tx_type: str, user_id: int):
+def extract_merchant_key(tx: dict, tx_type: str):
+    """
+    Zwraca 'czysty' klucz sprzedawcy (wydatek) / nadawcy (przychód) do
+    dopasowania kategorii. Priorytet:
+      1) creditor.name / debtor.name — nazwa strukturalna z banku (najpewniejsza),
+      2) fallback: pierwsza linia adresu (address_line[0]) obcięta do części
+         przed pierwszym blokiem 2+ spacji — ING wstawia tam 'SKLEP<spacje>MIASTO',
+         więc bierzemy sam początek (nazwę sklepu, bez miasta).
+    Zwraca None dla transferów albo braku danych.
+    """
+    if tx_type == "transfer":
+        return None
+    party = (tx.get("creditor") if tx_type == "expense" else tx.get("debtor")) or {}
+
+    name = (party.get("name") or "").strip()
+    if name:
+        return name
+
+    lines = party.get("postal_address", {}).get("address_line", []) or []
+    if lines:
+        raw = (lines[0] or "").strip()
+        head = re.split(r"\s{2,}", raw)[0].strip()
+        return head or raw or None
+    return None
+
+
+def find_category_for(db, description: str, tx_type: str, user_id: int,
+                      merchant_key: str = None):
     """
     Auto-kategoryzacja na podstawie historii — dopasowanie po słowie kluczowym
-    (pierwsze słowo > 3 znaki) z transakcji o tym samym typie. Zwraca category_id lub None.
+    z transakcji o tym samym typie. Zwraca category_id lub None.
+
+    Jeśli podano merchant_key (strukturalna nazwa sprzedawcy z banku), używamy
+    go jako źródła słowa kluczowego — jest pewniejszy niż zbudowany opis.
+    W przeciwnym razie fallback na pierwsze sensowne słowo opisu.
     """
-    if not (db and user_id and description) or tx_type == "transfer":
+    if not (db and user_id) or tx_type == "transfer":
         return None
     from models import Transaction, Account
-    keyword = utils.pick_category_keyword(description)
+    keyword = utils.pick_category_keyword(merchant_key) or \
+              utils.pick_category_keyword(description)
     if not keyword:
         return None
     similar = db.query(Transaction).join(
@@ -234,9 +267,11 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     # Do usunięcia po analizie jednego importu.
     _cred = tx.get("creditor") or {}
     _debt = tx.get("debtor") or {}
+    merchant_key = extract_merchant_key(tx, tx_type)
     print(f"[DIAG creditor/debtor] indicator={indicator} "
           f"creditor.name={_cred.get('name')!r} "
           f"debtor.name={_debt.get('name')!r} "
+          f"merchant_key={merchant_key!r} "
           f"creditor_keys={list(_cred.keys())} "
           f"debtor_keys={list(_debt.keys())} "
           f"ref={tx.get('entry_reference')!r}")
@@ -344,7 +379,7 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
         "status": "zrealizowana",
         "account_id": source_account_id,
         "reference": tx.get("entry_reference", ""),
-        "category_id": find_category_for(db, description, tx_type, user_id),
+        "category_id": find_category_for(db, description, tx_type, user_id, merchant_key),
     }
 
     if target_account_id:
