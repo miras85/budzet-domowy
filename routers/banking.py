@@ -260,11 +260,23 @@ def import_transactions(
         for tx_data in parsed:
             ref = tx_data.get("reference") or ""
 
-            # Deduplikacja: 1) po unikalnym identyfikatorze bankowym (entry_reference)
+            # Deduplikacja. UWAGA: entry_reference (np. 'D202607130000001') NIE
+            # jest globalnie unikalny — to dzienny numer sekwencyjny per KONTO,
+            # więc różne transakcje z różnych kont kolidują tym samym refem.
+            # Dlatego duplikatem jest dopiero rekord o tym samym ref ORAZ tej
+            # samej dacie/kwocie/typie/opisie (to jednoznacznie identyfikuje realną
+            # operację). Dzięki temu:
+            #  - transakcja zgubiona wcześniej przez kolizję refów zostaje dodana,
+            #  - powtórny import tej samej paczki NIE tworzy duplikatów,
+            #  - dwie identyczne płatności tego samego dnia (różny ref) obie wchodzą.
             existing = None
             if ref:
                 existing = db.query(models.Transaction).filter(
-                    models.Transaction.bank_reference == ref
+                    models.Transaction.bank_reference == ref,
+                    models.Transaction.date == tx_data["date"],
+                    models.Transaction.amount == tx_data["amount"],
+                    models.Transaction.type == tx_data["type"],
+                    models.Transaction.description == tx_data["description"],
                 ).first()
 
             # 2) fallback dla starych rekordów bez bank_reference (zaimportowanych
