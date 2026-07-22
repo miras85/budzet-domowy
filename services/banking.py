@@ -95,7 +95,15 @@ def create_session(code: str) -> dict:
 
 
 def get_transactions(session_id: str, account_uid: str,
-                     date_from: str = None, date_to: str = None) -> list:
+                     date_from: str = None, date_to: str = None,
+                     transaction_status: str = None) -> list:
+    """Pobiera transakcje konta z Enable Banking.
+
+    transaction_status: pojedynczy status wg specyfikacji (np. 'BOOK' albo 'PDNG').
+    UWAGA: parametr jest JEDNOWARTOŚCIOWY, a domyślnie API zwraca tylko 'BOOK'.
+    Nie da się w jednym zapytaniu dostać booked+pending — pending (blokady)
+    wymaga osobnego wywołania z transaction_status='PDNG'.
+    """
     headers = get_auth_headers()
 
     params = {}
@@ -103,6 +111,8 @@ def get_transactions(session_id: str, account_uid: str,
         params["date_from"] = date_from
     if date_to:
         params["date_to"] = date_to
+    if transaction_status:
+        params["transaction_status"] = transaction_status
 
     r = requests.get(
         f"{API_BASE}/accounts/{account_uid}/transactions",
@@ -371,6 +381,17 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     card_owner = detect_card_owner(search_text)
     if card_owner:
         description = f"{description} ({card_owner})"
+
+    # LOG DIAGNOSTYCZNY dla transakcji oczekujących (blokad). Traktujemy pending
+    # jak booked (status 'zrealizowana'), ale logujemy sygnaturę, na której opiera
+    # się deduplikacja (data+kwota+typ+konto+opis) oraz ref. Dzięki temu po
+    # pierwszym realnym imporcie z blokadami będziemy mogli porównać, co ING
+    # zmienia przy przejściu pending->booked (czy opis/kwota/data są stabilne,
+    # czy pending ma entry_reference) i ewentualnie dostroić klucz dedup.
+    if tx.get("status") == "PDNG":
+        print(f"[PENDING] SYGNATURA data={tx_date} kwota={amount} typ={tx_type} "
+              f"konto={source_account_id} ref={tx.get('entry_reference')!r} "
+              f"opis={description[:60]!r}")
 
     result = {
         "date": tx_date,

@@ -233,10 +233,29 @@ def import_transactions(
         all_transactions = []
         for account in accounts:
             account_uid = account.get("uid")
+            # 1) Transakcje zaksięgowane (domyślnie API zwraca tylko BOOK).
             txs = banking_service.get_transactions(
                 session.session_id, account_uid, date_from, date_to
             )
             all_transactions.extend(txs)
+
+            # 2) Transakcje oczekujące/blokady (PDNG) — OSOBNE zapytanie, bo
+            # transaction_status jest jednowartościowy. Traktujemy je jak booked
+            # (ten sam status, wpływ na saldo i dashboard). Gdy blokada się
+            # zaksięguje, przyjdzie później jako BOOK i zostanie pominięta przez
+            # deduplikację (sygnatura treści). Błąd/limit na PDNG NIE może wywalić
+            # importu booked — łapiemy i kontynuujemy.
+            try:
+                pending = banking_service.get_transactions(
+                    session.session_id, account_uid, date_from, date_to,
+                    transaction_status="PDNG"
+                )
+                print(f"[PENDING] Konto {account_uid[:8]}…: pobrano {len(pending)} "
+                      f"transakcji oczekujących (PDNG)")
+                all_transactions.extend(pending)
+            except HTTPException as e:
+                print(f"[PENDING] Pominięto pobieranie blokad dla {account_uid[:8]}…: "
+                      f"{e.detail}")
 
         ror_account = db.query(models.Account).filter(
             models.Account.user_id == current_user.id,
@@ -260,42 +279,41 @@ def import_transactions(
         for tx_data in parsed:
             ref = tx_data.get("reference") or ""
 
-            # Deduplikacja. UWAGA: entry_reference (np. 'D202607130000001') NIE
-            # jest globalnie unikalny — to dzienny numer sekwencyjny per KONTO,
-            # więc różne transakcje z różnych kont kolidują tym samym refem.
-            # Dlatego duplikatem jest dopiero rekord o tym samym ref ORAZ tej
-            # samej dacie/kwocie/typie/opisie (to jednoznacznie identyfikuje realną
-            # operację). Dzięki temu:
-            #  - transakcja zgubiona wcześniej przez kolizję refów zostaje dodana,
-            #  - powtórny import tej samej paczki NIE tworzy duplikatów,
-            #  - dwie identyczne płatności tego samego dnia (różny ref) obie wchodzą.
-            existing = None
-            if ref:
-                existing = db.query(models.Transaction).filter(
-                    models.Transaction.bank_reference == ref,
-                    models.Transaction.date == tx_data["date"],
-                    models.Transaction.amount == tx_data["amount"],
-                    models.Transaction.type == tx_data["type"],
-                    models.Transaction.description == tx_data["description"],
-                ).first()
+            # Deduplikacja oparta na SYGNATURZE TREŚCI (konto+data+kwota+typ+opis),
+            # tolerancyjna na zmianę entry_reference. Powody:
+            #  - entry_reference NIE jest globalnie unikalny (dzienny numer per
+            #    konto) i bywa różny lub pusty dla blokad (pending), a nadawany
+            #    dopiero przy księgowaniu → nie można na nim polegać.
+            #  - Blokada (pending) i jej późniejsza wersja booked mają tę samą
+            #    treść, ale różny (lub brak) ref. Chcemy rozpoznać je jako TĘ SAMĄ
+            #    operację i pominąć booked, skoro dodaliśmy ją już jako pending.
+            #
+            # Reguła: wśród rekordów o tej samej sygnaturze treści rekord jest
+            # duplikatem, gdy:
+            #   - nowy nie ma refu (pending),           LUB
+            #   - istniejący nie ma refu (pending/stary rekord), LUB
+            #   - refy są identyczne (ten sam booked / powtórny import).
+            # Jedyny przypadek NIE-duplikatu: oba mają ref i są RÓŻNE → to dwie
+            # odrębne operacje (np. dwie identyczne płatności booked) → obie wchodzą.
+            candidates = db.query(models.Transaction).filter(
+                models.Transaction.account_id == tx_data["account_id"],
+                models.Transaction.date == tx_data["date"],
+                models.Transaction.amount == tx_data["amount"],
+                models.Transaction.type == tx_data["type"],
+                models.Transaction.description == tx_data["description"],
+            ).all()
 
-            # 2) fallback dla starych rekordów bez bank_reference (zaimportowanych
-            #    przed migracją) — sygnatura, ale TYLKO gdy bank_reference jest NULL,
-            #    żeby nie odrzucać legalnych identycznych transakcji z tej samej paczki
-            if not existing:
-                existing = db.query(models.Transaction).filter(
-                    models.Transaction.bank_reference.is_(None),
-                    models.Transaction.date == tx_data["date"],
-                    models.Transaction.amount == tx_data["amount"],
-                    models.Transaction.description == tx_data["description"],
-                    models.Transaction.account_id == tx_data["account_id"],
-                    models.Transaction.type == tx_data["type"]
-                ).first()
+            existing = None
+            for c in candidates:
+                if (not ref) or (c.bank_reference is None) or (c.bank_reference == ref):
+                    existing = c
+                    break
 
             if existing:
                 skipped += 1
-                print(f"[IMPORT] SKIP duplikat ref={ref!r} {tx_data['date']} "
-                      f"{tx_data['amount']} {tx_data['type']} {tx_data['description'][:40]!r}")
+                print(f"[IMPORT] SKIP duplikat ref={ref!r} istn_ref={existing.bank_reference!r} "
+                      f"{tx_data['date']} {tx_data['amount']} {tx_data['type']} "
+                      f"{tx_data['description'][:40]!r}")
                 continue
 
             new_tx = models.Transaction(
