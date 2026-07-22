@@ -254,6 +254,21 @@ def import_transactions(
                       f"booked={info['booked']}({info['booked_type']}) "
                       f"available={info['available']}({info['avail_type']}) "
                       f"-> zablokowane={info['blocked']}")
+                # DIAGNOSTYKA (do usunięcia): surowy JSON CAŁEJ odpowiedzi /balances,
+                # bez naszego filtrowania — dowód, czy 13 blokad kartowych jest gdzieś
+                # ukryte (osobny wpis balance_type INFO/OTHR, inna struktura kwoty),
+                # czy ING w ogóle nie wystawia holdów w PSD2.
+                import json as _json
+                print(f"[BALANCE RAW] Konto {account_uid[:8]}…: "
+                      f"{_json.dumps(balances, ensure_ascii=False)}")
+                # Sanity-check: ile transakcji i czy wszystkie mają status BOOK
+                # (może te 13 'blokad' są już zaksięgowane jako BOOK?).
+                _statuses = {}
+                for _t in txs:
+                    _s = _t.get("status")
+                    _statuses[_s] = _statuses.get(_s, 0) + 1
+                print(f"[BALANCE RAW] Konto {account_uid[:8]}…: "
+                      f"transakcji={len(txs)} statusy={_statuses}")
                 balances_log.append({"uid": account_uid[:8], **info})
             except HTTPException as e:
                 print(f"[BALANCE] Pominięto salda dla {account_uid[:8]}…: {e.detail}")
