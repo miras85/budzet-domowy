@@ -252,6 +252,15 @@ def import_transactions(
                 )
                 print(f"[PENDING] Konto {account_uid[:8]}…: pobrano {len(pending)} "
                       f"transakcji oczekujących (PDNG)")
+                # Zrzut surowego JSON pierwszych blokad — decydujący dowód, jak ING
+                # opisuje pending (status, entry_reference, pola dat). Uruchamiamy
+                # tylko gdy coś przyszło, więc nie zaśmieca logów przy 0.
+                for i, p in enumerate(pending[:3]):
+                    print(f"[PENDING RAW] Konto {account_uid[:8]}… #{i} "
+                          f"status={p.get('status')!r} ref={p.get('entry_reference')!r} "
+                          f"booking={p.get('booking_date')!r} value={p.get('value_date')!r} "
+                          f"transaction_date={p.get('transaction_date')!r} "
+                          f"amount={p.get('transaction_amount')} keys={list(p.keys())}")
                 all_transactions.extend(pending)
             except HTTPException as e:
                 print(f"[PENDING] Pominięto pobieranie blokad dla {account_uid[:8]}…: "
@@ -279,35 +288,34 @@ def import_transactions(
         for tx_data in parsed:
             ref = tx_data.get("reference") or ""
 
-            # Deduplikacja oparta na SYGNATURZE TREŚCI (konto+data+kwota+typ+opis),
-            # tolerancyjna na zmianę entry_reference. Powody:
-            #  - entry_reference NIE jest globalnie unikalny (dzienny numer per
-            #    konto) i bywa różny lub pusty dla blokad (pending), a nadawany
-            #    dopiero przy księgowaniu → nie można na nim polegać.
-            #  - Blokada (pending) i jej późniejsza wersja booked mają tę samą
-            #    treść, ale różny (lub brak) ref. Chcemy rozpoznać je jako TĘ SAMĄ
-            #    operację i pominąć booked, skoro dodaliśmy ją już jako pending.
+            # Deduplikacja.
+            # entry_reference (np. 'D202607220000004' = D+RRRRMMDD+dzienny numer)
+            # jest unikalny W OBRĘBIE JEDNEGO KONTA, więc para
+            # (account_id, bank_reference) jednoznacznie identyfikuje operację
+            # ZAKSIĘGOWANĄ. Zalety względem sygnatury treści:
+            #  - odporność na ZMIENNY OPIS: transakcje zagraniczne (Revolut/Dublin)
+            #    dostają w opisie dopisywany kurs/kwotę walutową, który zmienia się
+            #    między pobraniami → sygnatura treści je gubiła i tworzyła duplikaty,
+            #  - odporność na kolizje MIĘDZYKONTOWE (ten sam ref na różnych kontach),
+            #  - dwie różne identyczne płatności mają różne ref → obie wchodzą.
             #
-            # Reguła: wśród rekordów o tej samej sygnaturze treści rekord jest
-            # duplikatem, gdy:
-            #   - nowy nie ma refu (pending),           LUB
-            #   - istniejący nie ma refu (pending/stary rekord), LUB
-            #   - refy są identyczne (ten sam booked / powtórny import).
-            # Jedyny przypadek NIE-duplikatu: oba mają ref i są RÓŻNE → to dwie
-            # odrębne operacje (np. dwie identyczne płatności booked) → obie wchodzą.
-            candidates = db.query(models.Transaction).filter(
-                models.Transaction.account_id == tx_data["account_id"],
-                models.Transaction.date == tx_data["date"],
-                models.Transaction.amount == tx_data["amount"],
-                models.Transaction.type == tx_data["type"],
-                models.Transaction.description == tx_data["description"],
-            ).all()
-
-            existing = None
-            for c in candidates:
-                if (not ref) or (c.bank_reference is None) or (c.bank_reference == ref):
-                    existing = c
-                    break
+            # Brak ref (np. blokada/pending, zanim ING nada entry_reference) →
+            # fallback na sygnaturę treści, ale TYLKO wśród rekordów bez ref, żeby
+            # nie kolidować z zaksięgowanymi.
+            if ref:
+                existing = db.query(models.Transaction).filter(
+                    models.Transaction.account_id == tx_data["account_id"],
+                    models.Transaction.bank_reference == ref,
+                ).first()
+            else:
+                existing = db.query(models.Transaction).filter(
+                    models.Transaction.account_id == tx_data["account_id"],
+                    models.Transaction.date == tx_data["date"],
+                    models.Transaction.amount == tx_data["amount"],
+                    models.Transaction.type == tx_data["type"],
+                    models.Transaction.description == tx_data["description"],
+                    models.Transaction.bank_reference.is_(None),
+                ).first()
 
             if existing:
                 skipped += 1
