@@ -139,6 +139,37 @@ def get_transactions(session_id: str, account_uid: str,
     return r.json().get("transactions", [])
 
 
+def get_account_details(account_uid: str) -> dict:
+    """Pobiera szczegóły konta: GET /accounts/{uid}/details.
+
+    Zwraca m.in.:
+      - account_id: {iban}
+      - all_account_ids: [{identification, scheme_name}]  (np. BBAN) → mapowanie
+      - credit_limit: {currency, amount}  <-- LIMIT DEBETU (overdraft)
+      - identification_hash
+
+    credit_limit pozwala policzyć blokady bez ręcznej konfiguracji limitu:
+    blokady = booked (ITBD) + credit_limit − available (ITAV).
+    """
+    headers = get_auth_headers()
+    r = requests.get(
+        f"{API_BASE}/accounts/{account_uid}/details",
+        headers=headers,
+    )
+    if r.status_code == 429:
+        retry_after = r.headers.get("Retry-After")
+        detail = (f"ING rate limit — poczekaj {int(retry_after) // 60}min "
+                  f"{int(retry_after) % 60}s." if retry_after
+                  else "ING chwilowo blokuje zapytania (rate limit).")
+        raise HTTPException(status_code=429, detail=detail)
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Błąd pobierania szczegółów konta: {r.text}"
+        )
+    return r.json()
+
+
 def get_balances(account_uid: str) -> list:
     """Pobiera salda konta z Enable Banking: GET /accounts/{uid}/balances.
 

@@ -254,21 +254,21 @@ def import_transactions(
                       f"booked={info['booked']}({info['booked_type']}) "
                       f"available={info['available']}({info['avail_type']}) "
                       f"-> zablokowane={info['blocked']}")
-                # DIAGNOSTYKA (do usunięcia): surowy JSON CAŁEJ odpowiedzi /balances,
-                # bez naszego filtrowania — dowód, czy 13 blokad kartowych jest gdzieś
-                # ukryte (osobny wpis balance_type INFO/OTHR, inna struktura kwoty),
-                # czy ING w ogóle nie wystawia holdów w PSD2.
-                import json as _json
-                print(f"[BALANCE RAW] Konto {account_uid[:8]}…: "
-                      f"{_json.dumps(balances, ensure_ascii=False)}")
-                # Sanity-check: ile transakcji i czy wszystkie mają status BOOK
-                # (może te 13 'blokad' są już zaksięgowane jako BOOK?).
-                _statuses = {}
-                for _t in txs:
-                    _s = _t.get("status")
-                    _statuses[_s] = _statuses.get(_s, 0) + 1
-                print(f"[BALANCE RAW] Konto {account_uid[:8]}…: "
-                      f"transakcji={len(txs)} statusy={_statuses}")
+                # DIAGNOSTYKA (do usunięcia): szczegóły konta — sprawdzamy czy ING
+                # wypełnia credit_limit (limit debetu) i jak identyfikuje konto
+                # (do mapowania uid → nasze konto). Jeśli credit_limit jest podany,
+                # blokady policzymy w pełni automatycznie:
+                #   blokady = ITBD + credit_limit − ITAV
+                try:
+                    details = banking_service.get_account_details(account_uid)
+                    print(f"[DETAILS] Konto {account_uid[:8]}…: "
+                          f"credit_limit={details.get('credit_limit')} "
+                          f"account_id={details.get('account_id')} "
+                          f"all_account_ids={details.get('all_account_ids')} "
+                          f"product={details.get('product')!r} "
+                          f"cash_account_type={details.get('cash_account_type')!r}")
+                except HTTPException as e:
+                    print(f"[DETAILS] Pominięto szczegóły dla {account_uid[:8]}…: {e.detail}")
                 balances_log.append({"uid": account_uid[:8], **info})
             except HTTPException as e:
                 print(f"[BALANCE] Pominięto salda dla {account_uid[:8]}…: {e.detail}")
