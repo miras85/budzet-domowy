@@ -139,6 +139,96 @@ def get_transactions(session_id: str, account_uid: str,
     return r.json().get("transactions", [])
 
 
+def get_balances(account_uid: str) -> list:
+    """Pobiera salda konta z Enable Banking: GET /accounts/{uid}/balances.
+
+    Zwraca listę obiektów salda (HalBalances.balances). Każdy element ma m.in.:
+      - name
+      - balance_amount: {currency, amount}
+      - balance_type: kod z enuma (CLBD, CLAV, ITBD, ITAV, XPCD, FWAV, ...)
+      - last_change_date_time / reference_date
+
+    Wykorzystywane do wyliczenia "zablokowanych środków" (blokady kartowe ING
+    nie są dostępne jako transakcje PDNG, widać je tylko w saldach:
+    booked - available).
+    """
+    headers = get_auth_headers()
+    r = requests.get(
+        f"{API_BASE}/accounts/{account_uid}/balances",
+        headers=headers,
+    )
+
+    if r.status_code == 429:
+        retry_after = r.headers.get("Retry-After")
+        if retry_after:
+            wait_seconds = int(retry_after)
+            detail = f"ING rate limit — poczekaj {wait_seconds // 60}min {wait_seconds % 60}s."
+        else:
+            detail = "ING chwilowo blokuje zapytania (rate limit)."
+        raise HTTPException(status_code=429, detail=detail)
+
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Błąd pobierania sald: {r.text}"
+        )
+    return r.json().get("balances", [])
+
+
+# Priorytety wyboru salda "zaksięgowanego" i "dostępnego" spośród typów, które
+# potrafi zwrócić ING. Nie wiemy z góry, który podzbiór przyśle dane konto,
+# więc bierzemy pierwszy dostępny wg priorytetu (od najbardziej "śróddziennego").
+#   booked (ile realnie zaksięgowano):  ITBD (interim) -> CLBD (closing) -> OPBD
+#   available (ile mogę wydać po blokadach): ITAV -> CLAV -> XPCD (expected) -> FWAV
+_BOOKED_PRIORITY = ["ITBD", "CLBD", "OPBD"]
+_AVAILABLE_PRIORITY = ["ITAV", "CLAV", "XPCD", "FWAV"]
+
+
+def _pick_balance(by_type: dict, priority: list):
+    """Zwraca (typ, kwota) pierwszego dostępnego salda wg listy priorytetów."""
+    for t in priority:
+        if t in by_type:
+            return t, by_type[t]
+    return None, None
+
+
+def compute_blocked_funds(balances: list):
+    """Wylicza "zablokowane środki" = max(0, booked - available) z listy sald.
+
+    Zwraca dict do zalogowania/kalibracji:
+      {blocked, booked_type, booked, avail_type, available, all: {typ: kwota}}
+    Blokada jest heurystyką: booked-available ≈ blokady kartowe, ale nie jest
+    dokładne (debet/kredyt odnawialny, FX, opłaty, timing). Do pierwszej
+    kalibracji logujemy WSZYSTKIE typy sald z kwotami.
+    """
+    by_type = {}
+    for b in balances:
+        t = b.get("balance_type")
+        amt = (b.get("balance_amount") or {}).get("amount")
+        if t is None or amt is None:
+            continue
+        try:
+            by_type[t] = float(amt)
+        except (TypeError, ValueError):
+            continue
+
+    booked_type, booked = _pick_balance(by_type, _BOOKED_PRIORITY)
+    avail_type, available = _pick_balance(by_type, _AVAILABLE_PRIORITY)
+
+    blocked = None
+    if booked is not None and available is not None:
+        blocked = max(0.0, round(booked - available, 2))
+
+    return {
+        "blocked": blocked,
+        "booked_type": booked_type,
+        "booked": booked,
+        "avail_type": avail_type,
+        "available": available,
+        "all": by_type,
+    }
+
+
 def get_session_accounts(session_id: str) -> list:
     """Pobiera listę kont z sesji"""
     headers = get_auth_headers()
@@ -272,20 +362,7 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     indicator = tx.get("credit_debit_indicator", "DBIT")
     tx_type = "expense" if indicator == "DBIT" else "income"
 
-    # --- LOG DIAGNOSTYCZNY (Krok 1): surowe dane odbiorcy/nadawcy ---
-    # Cel: potwierdzić, czy Enable Banking dostarcza creditor.name / debtor.name,
-    # których chcemy użyć jako pewnego klucza kategoryzacji (nazwa sklepu).
-    # Do usunięcia po analizie jednego importu.
-    _cred = tx.get("creditor") or {}
-    _debt = tx.get("debtor") or {}
     merchant_key = extract_merchant_key(tx, tx_type)
-    print(f"[DIAG creditor/debtor] indicator={indicator} "
-          f"creditor.name={_cred.get('name')!r} "
-          f"debtor.name={_debt.get('name')!r} "
-          f"merchant_key={merchant_key!r} "
-          f"creditor_keys={list(_cred.keys())} "
-          f"debtor_keys={list(_debt.keys())} "
-          f"ref={tx.get('entry_reference')!r}")
 
     # Pobierz BBAN kont
     debtor_bban = None
@@ -382,16 +459,10 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
     if card_owner:
         description = f"{description} ({card_owner})"
 
-    # LOG DIAGNOSTYCZNY dla transakcji oczekujących (blokad). Traktujemy pending
-    # jak booked (status 'zrealizowana'), ale logujemy sygnaturę, na której opiera
-    # się deduplikacja (data+kwota+typ+konto+opis) oraz ref. Dzięki temu po
-    # pierwszym realnym imporcie z blokadami będziemy mogli porównać, co ING
-    # zmienia przy przejściu pending->booked (czy opis/kwota/data są stabilne,
-    # czy pending ma entry_reference) i ewentualnie dostroić klucz dedup.
-    if tx.get("status") == "PDNG":
-        print(f"[PENDING] SYGNATURA data={tx_date} kwota={amount} typ={tx_type} "
-              f"konto={source_account_id} ref={tx.get('entry_reference')!r} "
-              f"opis={description[:60]!r}")
+    # LOG DIAGNOSTYCZNY: przejście pending->booked. ING NIE wystawia blokad
+    # kartowych jako PDNG (potwierdzone: /transactions zwraca tylko BOOK).
+    # Blokady widać wyłącznie w saldach (patrz get_balances/compute_blocked_funds),
+    # dlatego nie logujemy już sygnatury pending.
 
     result = {
         "date": tx_date,

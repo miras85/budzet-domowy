@@ -231,40 +231,32 @@ def import_transactions(
             raise HTTPException(status_code=404, detail="Brak kont w sesji")
 
         all_transactions = []
+        balances_log = []
         for account in accounts:
             account_uid = account.get("uid")
-            # 1) Transakcje zaksięgowane (domyślnie API zwraca tylko BOOK).
+            # Transakcje zaksięgowane. ING zwraca WYŁĄCZNIE status BOOK —
+            # blokady kartowe NIE są dostępne jako transakcje PDNG (potwierdzone).
             txs = banking_service.get_transactions(
                 session.session_id, account_uid, date_from, date_to
             )
             all_transactions.extend(txs)
 
-            # 2) Transakcje oczekujące/blokady (PDNG) — OSOBNE zapytanie, bo
-            # transaction_status jest jednowartościowy. Traktujemy je jak booked
-            # (ten sam status, wpływ na saldo i dashboard). Gdy blokada się
-            # zaksięguje, przyjdzie później jako BOOK i zostanie pominięta przez
-            # deduplikację (sygnatura treści). Błąd/limit na PDNG NIE może wywalić
-            # importu booked — łapiemy i kontynuujemy.
+            # Zablokowane środki: liczymy je z SALD (booked - available), bo blokady
+            # nie występują w /transactions. Na potrzeby KALIBRACJI logujemy WSZYSTKIE
+            # typy sald z kwotami — po pierwszym imporcie sprawdzimy, które typy ING
+            # faktycznie zwraca i czy heurystyka priorytetów jest trafna. Błąd/limit
+            # na saldach NIE może wywalić importu transakcji — łapiemy i kontynuujemy.
             try:
-                pending = banking_service.get_transactions(
-                    session.session_id, account_uid, date_from, date_to,
-                    transaction_status="PDNG"
-                )
-                print(f"[PENDING] Konto {account_uid[:8]}…: pobrano {len(pending)} "
-                      f"transakcji oczekujących (PDNG)")
-                # Zrzut surowego JSON pierwszych blokad — decydujący dowód, jak ING
-                # opisuje pending (status, entry_reference, pola dat). Uruchamiamy
-                # tylko gdy coś przyszło, więc nie zaśmieca logów przy 0.
-                for i, p in enumerate(pending[:3]):
-                    print(f"[PENDING RAW] Konto {account_uid[:8]}… #{i} "
-                          f"status={p.get('status')!r} ref={p.get('entry_reference')!r} "
-                          f"booking={p.get('booking_date')!r} value={p.get('value_date')!r} "
-                          f"transaction_date={p.get('transaction_date')!r} "
-                          f"amount={p.get('transaction_amount')} keys={list(p.keys())}")
-                all_transactions.extend(pending)
+                balances = banking_service.get_balances(account_uid)
+                info = banking_service.compute_blocked_funds(balances)
+                print(f"[BALANCE] Konto {account_uid[:8]}…: "
+                      f"typy={info['all']} "
+                      f"booked={info['booked']}({info['booked_type']}) "
+                      f"available={info['available']}({info['avail_type']}) "
+                      f"-> zablokowane={info['blocked']}")
+                balances_log.append({"uid": account_uid[:8], **info})
             except HTTPException as e:
-                print(f"[PENDING] Pominięto pobieranie blokad dla {account_uid[:8]}…: "
-                      f"{e.detail}")
+                print(f"[BALANCE] Pominięto salda dla {account_uid[:8]}…: {e.detail}")
 
         ror_account = db.query(models.Account).filter(
             models.Account.user_id == current_user.id,
