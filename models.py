@@ -28,6 +28,13 @@ class Account(Base):
     is_savings = Column(Boolean, default=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     bban = Column(String(50), nullable=True)
+    # Limit debetu (overdraft) konta — ING nie wystawia go przez API (credit_limit=None),
+    # więc konfigurujemy ręcznie. Potrzebny do wyliczenia zablokowanych środków:
+    #   blokady = saldo_booked (ITBD) + overdraft_limit − saldo_available (ITAV)
+    overdraft_limit = Column(DECIMAL(10, 2), default=0.0)
+    # Zablokowane środki (blokady kartowe) policzone z sald ING przy ostatnim imporcie.
+    # Migawka — odświeżana przy każdym imporcie. Wartość zbiorcza na koncie.
+    blocked_funds = Column(DECIMAL(10, 2), default=0.0)
 
     user = relationship("User", back_populates="accounts")
 

@@ -16,6 +16,9 @@ export default {
                         <div class="text-xs text-slate-400 uppercase">{{ acc.type }} <span v-if="acc.is_savings" class="text-purple-400 font-bold">(Oszcz.)</span></div>
                         <div class="font-bold text-lg text-white">{{ acc.name }}</div>
                         <div class="text-xl font-bold text-blue-400 mt-1">{{ formatMoney(acc.balance) }}</div>
+                        <div v-if="acc.blocked_funds > 0" class="text-xs text-amber-400 mt-1" title="Blokady kartowe / autoryzacje jeszcze niezaksięgowane (z sald ING)">
+                            🔒 Zablokowane środki: {{ formatMoney(acc.blocked_funds) }}
+                        </div>
                     </div>
                     <div class="flex gap-2">
                         <!-- Import CSV ukryty: podstawowa ścieżka to ING (Enable Banking).

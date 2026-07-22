@@ -223,14 +223,21 @@ def _pick_balance(by_type: dict, priority: list):
     return None, None
 
 
-def compute_blocked_funds(balances: list):
-    """Wylicza "zablokowane środki" = max(0, booked - available) z listy sald.
+def compute_blocked_funds(balances: list, overdraft_limit: float = 0.0):
+    """Wylicza "zablokowane środki" z listy sald ING.
 
-    Zwraca dict do zalogowania/kalibracji:
-      {blocked, booked_type, booked, avail_type, available, all: {typ: kwota}}
-    Blokada jest heurystyką: booked-available ≈ blokady kartowe, ale nie jest
-    dokładne (debet/kredyt odnawialny, FX, opłaty, timing). Do pierwszej
-    kalibracji logujemy WSZYSTKIE typy sald z kwotami.
+    Wzór (zwalidowany na realnych danych + apce ING):
+        blocked = max(0, booked (ITBD) + overdraft_limit − available (ITAV))
+
+    ING wystawia tylko ITBD (interim booked) i ITAV (interim available) i NIE
+    zwraca limitu debetu (credit_limit=None), dlatego overdraft_limit podajemy
+    z konfiguracji konta. Blokady kartowe są ukryte w ITAV (obniżają dostępne),
+    a wychodzą dopiero po dodaniu limitu debetu do salda booked.
+
+    overdraft_limit=0 (konta bez debetu) → wzór redukuje się do ITBD − ITAV.
+
+    Zwraca dict do logowania:
+      {blocked, booked_type, booked, avail_type, available, limit, all}
     """
     by_type = {}
     for b in balances:
@@ -246,9 +253,14 @@ def compute_blocked_funds(balances: list):
     booked_type, booked = _pick_balance(by_type, _BOOKED_PRIORITY)
     avail_type, available = _pick_balance(by_type, _AVAILABLE_PRIORITY)
 
+    try:
+        limit = float(overdraft_limit or 0)
+    except (TypeError, ValueError):
+        limit = 0.0
+
     blocked = None
     if booked is not None and available is not None:
-        blocked = max(0.0, round(booked - available, 2))
+        blocked = max(0.0, round(booked + limit - available, 2))
 
     return {
         "blocked": blocked,
@@ -256,6 +268,7 @@ def compute_blocked_funds(balances: list):
         "booked": booked,
         "avail_type": avail_type,
         "available": available,
+        "limit": limit,
         "all": by_type,
     }
 

@@ -231,7 +231,6 @@ def import_transactions(
             raise HTTPException(status_code=404, detail="Brak kont w sesji")
 
         all_transactions = []
-        balances_log = []
         for account in accounts:
             account_uid = account.get("uid")
             # Transakcje zaksięgowane. ING zwraca WYŁĄCZNIE status BOOK —
@@ -241,37 +240,34 @@ def import_transactions(
             )
             all_transactions.extend(txs)
 
-            # Zablokowane środki: liczymy je z SALD (booked - available), bo blokady
-            # nie występują w /transactions. Na potrzeby KALIBRACJI logujemy WSZYSTKIE
-            # typy sald z kwotami — po pierwszym imporcie sprawdzimy, które typy ING
-            # faktycznie zwraca i czy heurystyka priorytetów jest trafna. Błąd/limit
-            # na saldach NIE może wywalić importu transakcji — łapiemy i kontynuujemy.
+            # Zablokowane środki (blokady kartowe). NIE ma ich w /transactions
+            # (brak PDNG) — są ukryte w saldach ING. Wzór (zwalidowany na realnych
+            # danych + apce ING):  blocked = ITBD + limit_debetu − ITAV.
+            # Limit debetu bierzemy z konfiguracji naszego konta (ING zwraca
+            # credit_limit=None). Mapujemy Enable Banking uid → nasze konto po IBAN
+            # (/details). Błąd/limit na tych zapytaniach NIE może wywalić importu
+            # transakcji — łapiemy i kontynuujemy.
             try:
                 balances = banking_service.get_balances(account_uid)
-                info = banking_service.compute_blocked_funds(balances)
-                print(f"[BALANCE] Konto {account_uid[:8]}…: "
-                      f"typy={info['all']} "
+                details = banking_service.get_account_details(account_uid)
+                iban = (details.get("account_id") or {}).get("iban") or ""
+                # ING zwraca IBAN (PL + BBAN); nasze konto trzyma sam BBAN.
+                bban = iban[2:] if iban[:2].isalpha() else iban
+                acct = banking_service.get_account_by_bban(db, bban, current_user.id)
+                limit = float(acct.overdraft_limit or 0) if acct else 0.0
+
+                info = banking_service.compute_blocked_funds(balances, overdraft_limit=limit)
+
+                if acct and info["blocked"] is not None:
+                    acct.blocked_funds = info["blocked"]
+
+                print(f"[BLOCKED] konto_id={acct.id if acct else '?'} "
+                      f"({acct.name if acct else account_uid[:8]}): "
                       f"booked={info['booked']}({info['booked_type']}) "
                       f"available={info['available']}({info['avail_type']}) "
-                      f"-> zablokowane={info['blocked']}")
-                # DIAGNOSTYKA (do usunięcia): szczegóły konta — sprawdzamy czy ING
-                # wypełnia credit_limit (limit debetu) i jak identyfikuje konto
-                # (do mapowania uid → nasze konto). Jeśli credit_limit jest podany,
-                # blokady policzymy w pełni automatycznie:
-                #   blokady = ITBD + credit_limit − ITAV
-                try:
-                    details = banking_service.get_account_details(account_uid)
-                    print(f"[DETAILS] Konto {account_uid[:8]}…: "
-                          f"credit_limit={details.get('credit_limit')} "
-                          f"account_id={details.get('account_id')} "
-                          f"all_account_ids={details.get('all_account_ids')} "
-                          f"product={details.get('product')!r} "
-                          f"cash_account_type={details.get('cash_account_type')!r}")
-                except HTTPException as e:
-                    print(f"[DETAILS] Pominięto szczegóły dla {account_uid[:8]}…: {e.detail}")
-                balances_log.append({"uid": account_uid[:8], **info})
+                      f"limit_debetu={limit} -> zablokowane={info['blocked']} zł")
             except HTTPException as e:
-                print(f"[BALANCE] Pominięto salda dla {account_uid[:8]}…: {e.detail}")
+                print(f"[BLOCKED] Pominięto salda/blokady dla {account_uid[:8]}…: {e.detail}")
 
         ror_account = db.query(models.Account).filter(
             models.Account.user_id == current_user.id,

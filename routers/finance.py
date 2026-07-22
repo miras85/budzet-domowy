@@ -379,7 +379,9 @@ def get_accounts(db: Session = Depends(database.get_db), current_user: models.Us
             reserved = float(res_val) if res_val else 0.0
         result.append({"id": acc.id, "name": acc.name, "type": acc.type,
             "balance": float(acc.balance), "is_savings": acc.is_savings,
-            "available": float(acc.balance) - reserved})
+            "available": float(acc.balance) - reserved,
+            "blocked_funds": float(acc.blocked_funds or 0),
+            "overdraft_limit": float(acc.overdraft_limit or 0)})
     return result
 
 @router.post("/accounts")
