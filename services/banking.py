@@ -400,7 +400,8 @@ def parse_ing_transaction(tx: dict, default_account_id: int,
 
 def parse_ing_transactions(transactions: list, default_account_id: int,
                            db=None, user_id: int = None) -> list:
-    """Konwertuje listę transakcji ING (posortowane chronologicznie: od najstarszej)"""
+    """Konwertuje listę transakcji ING i sortuje deterministycznie po (data,
+    entry_reference), tak by kolejność w obrębie dnia = kolejność bankowa."""
     result = []
     for tx in transactions:
         try:
@@ -439,11 +440,14 @@ def parse_ing_transactions(transactions: list, default_account_id: int,
         deduped.append(p)
     result = deduped
 
-    # ING zwraca transakcje od najnowszej. Odwracamy (→ najstarsza pierwsza),
-    # a następnie STABILNIE sortujemy rosnąco po dacie. Stabilny sort zachowuje
-    # kolejność wewnątrz tego samego dnia (najstarsza pierwsza). Dzięki temu
-    # kolejność wstawiania do bazy (rosnące id) = kolejność chronologiczna.
-    result.reverse()
-    result.sort(key=lambda x: (x.get("date") or ""))
+    # Kolejność w obrębie dnia jest istotna. NIE polegamy na kolejności zwracania
+    # przez ING (bywa różna, a przy scalaniu wielu kont zależy od kolejności pętli),
+    # tylko sortujemy DETERMINISTYCZNIE po (data, entry_reference).
+    # entry_reference ma postać 'D202607130000001' = 'D' + RRRRMMDD + dzienny numer
+    # sekwencyjny per konto. Rosnący entry_reference = kolejność nadana przez bank,
+    # więc rosnący sort daje kolejność bankową w obrębie dnia. Kolejność wstawiania
+    # do bazy (rosnące id) odwzorowuje wtedy kolejność bankową. Fallback do "" gdy
+    # brak reference — takie trafiają na początek dnia, ale deterministycznie.
+    result.sort(key=lambda x: (x.get("date") or "", x.get("reference") or ""))
     return result
 
