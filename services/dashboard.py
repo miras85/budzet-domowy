@@ -22,6 +22,17 @@ def get_dashboard_data(db: Session, offset: int, user_id: int):
     ).scalar()
     disposable_balance = float(raw_ror) if raw_ror is not None else 0.0
 
+    # Obniż "dostępne środki" o zablokowane środki (blokady kartowe/autoryzacje).
+    # NIE jest to sprzężenie z ING podczas importu — używamy salda policzonego
+    # z transakcji w apce i odejmujemy zapisany snapshot blocked_funds
+    # (liczony przy imporcie: max(0, ITBD + limit_debetu − ITAV)).
+    raw_blocked = db.query(func.sum(models.Account.blocked_funds)).filter(
+        models.Account.user_id == user_id,
+        models.Account.is_savings == False
+    ).scalar()
+    blocked_total = float(raw_blocked) if raw_blocked is not None else 0.0
+    disposable_balance -= blocked_total
+
     raw_debt = db.query(func.sum(models.Loan.remaining_amount)).filter(
         models.Loan.user_id == user_id
     ).scalar()
