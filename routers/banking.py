@@ -231,8 +231,11 @@ def import_transactions(
             raise HTTPException(status_code=404, detail="Brak kont w sesji")
 
         all_transactions = []
+        session_uids = []
         for account in accounts:
             account_uid = account.get("uid")
+            if account_uid:
+                session_uids.append(account_uid)
             # Transakcje zaksięgowane. ING zwraca WYŁĄCZNIE status BOOK —
             # blokady kartowe NIE są dostępne jako transakcje PDNG (potwierdzone).
             txs = banking_service.get_transactions(
@@ -240,40 +243,57 @@ def import_transactions(
             )
             all_transactions.extend(txs)
 
-            # Zablokowane środki (blokady kartowe). NIE ma ich w /transactions
-            # (brak PDNG) — są ukryte w saldach ING. Wzór (zwalidowany na realnych
-            # danych + apce ING):  blocked = ITBD + limit_debetu − ITAV.
-            # Limit debetu bierzemy z konfiguracji naszego konta (ING zwraca
-            # credit_limit=None). Mapujemy Enable Banking uid → nasze konto po IBAN
-            # (/details). Błąd/limit na tych zapytaniach NIE może wywalić importu
-            # transakcji — łapiemy i kontynuujemy.
-            try:
-                balances = banking_service.get_balances(account_uid)
-                details = banking_service.get_account_details(account_uid)
-                iban = (details.get("account_id") or {}).get("iban") or ""
-                # ING zwraca IBAN (PL + BBAN); nasze konto trzyma sam BBAN.
-                bban = iban[2:] if iban[:2].isalpha() else iban
-                acct = banking_service.get_account_by_bban(db, bban, current_user.id)
-                limit = float(acct.overdraft_limit or 0) if acct else 0.0
-
-                info = banking_service.compute_blocked_funds(balances, overdraft_limit=limit)
-
-                if acct and info["blocked"] is not None:
-                    acct.blocked_funds = info["blocked"]
-
-                print(f"[BLOCKED] konto_id={acct.id if acct else '?'} "
-                      f"({acct.name if acct else account_uid[:8]}): "
-                      f"booked={info['booked']}({info['booked_type']}) "
-                      f"available={info['available']}({info['avail_type']}) "
-                      f"limit_debetu={limit} -> zablokowane={info['blocked']} zł")
-            except HTTPException as e:
-                print(f"[BLOCKED] Pominięto salda/blokady dla {account_uid[:8]}…: {e.detail}")
-
         ror_account = db.query(models.Account).filter(
             models.Account.user_id == current_user.id,
             models.Account.is_savings == False
         ).first()
         account_id = ror_account.id if ror_account else 1
+
+        # Zablokowane środki (blokady kartowe). NIE ma ich w /transactions (brak
+        # PDNG) — są ukryte w saldach ING. Wzór (zwalidowany): blocked = ITBD +
+        # limit_debetu − ITAV. Endpoint /balances ING jest OSTRO limitowany, więc
+        # wołamy salda TYLKO dla RÓR (konto z debetem; oszczędnościowe mają
+        # blocked=0). Mapowanie uid→konto zapamiętujemy raz (Account.enable_banking_uid)
+        # przez /details, potem pomijamy /details. Błąd/limit NIE wywala importu.
+        #
+        # 1) Ustal uid RÓR: z cache jeśli aktualny w tej sesji, inaczej naucz z /details.
+        ror_uid = None
+        if ror_account and ror_account.enable_banking_uid in session_uids:
+            ror_uid = ror_account.enable_banking_uid
+        else:
+            for uid in session_uids:
+                try:
+                    details = banking_service.get_account_details(uid)
+                except HTTPException as e:
+                    print(f"[BLOCKED] /details {uid[:8]}… nieudane: {e.detail}")
+                    continue
+                iban = (details.get("account_id") or {}).get("iban") or ""
+                # ING zwraca IBAN (PL + BBAN); nasze konto trzyma sam BBAN.
+                bban = iban[2:] if iban[:2].isalpha() else iban
+                acct = banking_service.get_account_by_bban(db, bban, current_user.id)
+                if acct:
+                    acct.enable_banking_uid = uid  # zapamiętaj mapowanie
+                    if ror_account and acct.id == ror_account.id:
+                        ror_uid = uid
+                        break  # mamy RÓR — nie wołaj /details dla reszty
+            db.flush()
+
+        # 2) Pobierz salda TYLKO dla RÓR i policz blokady.
+        if ror_uid and ror_account:
+            try:
+                balances = banking_service.get_balances(ror_uid)
+                limit = float(ror_account.overdraft_limit or 0)
+                info = banking_service.compute_blocked_funds(balances, overdraft_limit=limit)
+                if info["blocked"] is not None:
+                    ror_account.blocked_funds = info["blocked"]
+                print(f"[BLOCKED] konto_id={ror_account.id} ({ror_account.name}): "
+                      f"booked={info['booked']}({info['booked_type']}) "
+                      f"available={info['available']}({info['avail_type']}) "
+                      f"limit_debetu={limit} -> zablokowane={info['blocked']} zł")
+            except HTTPException as e:
+                print(f"[BLOCKED] Pominięto salda dla RÓR ({ror_uid[:8]}…): {e.detail}")
+        else:
+            print("[BLOCKED] Nie ustalono uid RÓR (brak mapowania/details) — pomijam salda.")
 
         parsed = parse_ing_transactions(
             all_transactions, account_id,

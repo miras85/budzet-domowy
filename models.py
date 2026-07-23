@@ -35,6 +35,10 @@ class Account(Base):
     # Zablokowane środki (blokady kartowe) policzone z sald ING przy ostatnim imporcie.
     # Migawka — odświeżana przy każdym imporcie. Wartość zbiorcza na koncie.
     blocked_funds = Column(DECIMAL(10, 2), default=0.0)
+    # Enable Banking uid konta (mapowanie uid→nasze konto). Zapamiętane raz z /details,
+    # żeby przy imporcie nie wołać /details ani /balances dla każdego konta osobno.
+    # Salda (dla blokad) pobieramy tylko dla konta z debetem (RÓR) → 1 zapytanie/import.
+    enable_banking_uid = Column(String(64), nullable=True)
 
     user = relationship("User", back_populates="accounts")
 
