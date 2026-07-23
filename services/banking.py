@@ -62,6 +62,19 @@ def _api_get(path: str, params: dict = None, *,
     for attempt in range(max_retries + 1):
         headers = get_auth_headers()  # świeży JWT na każdą próbę
         r = requests.get(f"{API_BASE}{path}", headers=headers, params=params or {})
+
+        # Zaloguj nagłówki związane z limitem, jeśli bank/Enable Banking je zwraca.
+        # ING (ASPSP) NIE ma endpointu "ile zostało" — jedyna wskazówka to nagłówki
+        # odpowiedzi. Zwykle jest ich brak, ale gdy się pojawią (Retry-After,
+        # X-RateLimit-Remaining/Limit/Reset, RateLimit-*), chcemy je widzieć w logu.
+        rl = {k: v for k, v in r.headers.items()
+              if k.lower() in (
+                  "retry-after", "x-ratelimit-remaining", "x-ratelimit-limit",
+                  "x-ratelimit-reset", "ratelimit-remaining", "ratelimit-limit",
+                  "ratelimit-reset", "x-rate-limit-remaining", "x-rate-limit-limit")}
+        if rl:
+            print(f"[RATE-HDRS] {path} status={r.status_code} {rl}")
+
         if r.status_code != 429:
             return r
 
