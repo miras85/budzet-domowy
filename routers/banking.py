@@ -142,13 +142,13 @@ def sync_transactions(
                 detail=f"Poczekaj jeszcze {wait} sekund przed kolejnym zapytaniem (ochrona przed spam)."
             )
 
-    # Throttling PSD2 — max 4 synchronizacje / 24h (tylko udane)
+    # Throttling PSD2 — max 4 dostępy do banku / 24h (wspólny licznik z /import)
     today = datetime.now().date()
     if session.sync_count_date == today:
         if session.sync_count_today >= 4:
             raise HTTPException(
                 status_code=429,
-                detail=f"Limit ING: maksymalnie 4 synchronizacje dziennie. Użyto: {session.sync_count_today}/4. Reset o północy."
+                detail=f"Limit ING: maksymalnie 4 dostępy do banku dziennie (import i podgląd łącznie). Użyto: {session.sync_count_today}/4. Reset o północy."
             )
     else:
         # Nowy dzień — reset licznika
@@ -224,6 +224,26 @@ def import_transactions(
 
     if not session:
         raise HTTPException(status_code=404, detail="Brak aktywnego połączenia z bankiem")
+
+    # Throttling PSD2 — WSPÓLNY dzienny budżet 4 dostępy/24h (RTS 2018/389
+    # art. 36(5)(b); EBA Q&A 2018_4210: limit liczy się PER-DOSTĘP, nie per-endpoint).
+    # Jeden import = jeden "dostęp" (transakcje + ewentualnie saldo w jednym oknie),
+    # tak samo jak /sync. Cap egzekwujemy TU — wcześniej brakowało go w imporcie,
+    # przez co powtarzane importy tego samego dnia po cichu wyczerpywały budżet ING
+    # i kończyły się 429. Licznik jest wspólny z /sync (sync_count_today).
+    today = datetime.now().date()
+    if session.sync_count_date == today:
+        if (session.sync_count_today or 0) >= 4:
+            raise HTTPException(
+                status_code=429,
+                detail=(f"Limit ING: maksymalnie 4 dostępy do banku dziennie "
+                        f"(import i podgląd łącznie). Użyto: {session.sync_count_today}/4. "
+                        f"Reset o północy.")
+            )
+    else:
+        # Nowy dzień — reset wspólnego licznika
+        session.sync_count_today = 0
+        session.sync_count_date = today
 
     try:
         accounts = banking_service.get_session_accounts(session.session_id)
