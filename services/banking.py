@@ -45,15 +45,19 @@ def get_auth_headers() -> dict:
 
 
 def _api_get(path: str, params: dict = None, *,
-             max_retries: int = 3, burst_wait: float = 3.0, max_wait: float = 6.0):
-    """GET do Enable Banking z retry/backoff na 429 (burst rate limit).
+             max_retries: int = 0, burst_wait: float = 3.0, max_wait: float = 6.0):
+    """GET do Enable Banking z opcjonalnym retry na 429.
 
-    Import woła per-konto serię zapytań (transakcje + salda + details), co
-    potrafi wywołać CHWILOWY 429 (burst limit) — zwykle BEZ nagłówka
-    Retry-After. Taki limit mija po kilku sekundach, więc czekamy i ponawiamy.
-    Gdy Retry-After jest duży (dzienny limit PSD2), nie czekamy dłużej niż
-    max_wait i po wyczerpaniu prób zgłaszamy 429 — wywołujący (import) łapie
-    to i kontynuuje bez blokad, nie wywalając importu transakcji.
+    UWAGA: 429 z ING = ASPSP_RATE_LIMIT_EXCEEDED, czyli DZIENNY limit PSD2
+    (ok. 4 zapytania/dobę per endpoint per konto), a NIE chwilowy burst.
+    Ponawianie takiego 429 jest bezcelowe — limit resetuje się dopiero o
+    północy, a każda kolejna próba to następne zapytanie do zablokowanego
+    endpointu, które dodatkowo zżera budżet. Dlatego domyślnie max_retries=0
+    (fail-fast): przy 429 od razu zgłaszamy HTTPException(429), a wywołujący
+    (import) łapie to i kontynuuje bez blokad, nie wywalając importu.
+
+    Parametry burst_wait/max_wait pozostają na wypadek, gdyby kiedyś trzeba
+    było świadomie włączyć ponawianie (max_retries>0) dla prawdziwego burstu.
 
     Zwraca obiekt Response (status 200 lub inny != 429). Na wyczerpanym 429
     rzuca HTTPException(429).
@@ -94,6 +98,8 @@ def _api_get(path: str, params: dict = None, *,
                   f"czekam {min(wait_seconds, max_wait):.0f}s i ponawiam…")
             time.sleep(min(wait_seconds, max_wait))
             continue
+        print(f"[RATE-LIMIT] 429 na {path} — dzienny limit ING (ASPSP) wyczerpany, "
+              f"nie ponawiam (fail-fast). Reset o północy.")
         raise HTTPException(status_code=429, detail=last_detail)
 
     raise HTTPException(status_code=429, detail=last_detail)
