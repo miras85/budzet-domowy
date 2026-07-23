@@ -2,6 +2,7 @@
 import jwt
 import requests
 import re
+import time
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException
 import os
@@ -41,6 +42,48 @@ def get_auth_headers() -> dict:
         headers={"kid": APP_ID}
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+def _api_get(path: str, params: dict = None, *,
+             max_retries: int = 3, burst_wait: float = 3.0, max_wait: float = 6.0):
+    """GET do Enable Banking z retry/backoff na 429 (burst rate limit).
+
+    Import woła per-konto serię zapytań (transakcje + salda + details), co
+    potrafi wywołać CHWILOWY 429 (burst limit) — zwykle BEZ nagłówka
+    Retry-After. Taki limit mija po kilku sekundach, więc czekamy i ponawiamy.
+    Gdy Retry-After jest duży (dzienny limit PSD2), nie czekamy dłużej niż
+    max_wait i po wyczerpaniu prób zgłaszamy 429 — wywołujący (import) łapie
+    to i kontynuuje bez blokad, nie wywalając importu transakcji.
+
+    Zwraca obiekt Response (status 200 lub inny != 429). Na wyczerpanym 429
+    rzuca HTTPException(429).
+    """
+    last_detail = "ING chwilowo blokuje zapytania (rate limit)."
+    for attempt in range(max_retries + 1):
+        headers = get_auth_headers()  # świeży JWT na każdą próbę
+        r = requests.get(f"{API_BASE}{path}", headers=headers, params=params or {})
+        if r.status_code != 429:
+            return r
+
+        retry_after = r.headers.get("Retry-After")
+        if retry_after:
+            try:
+                wait_seconds = int(retry_after)
+            except (TypeError, ValueError):
+                wait_seconds = burst_wait
+            last_detail = (f"ING rate limit — poczekaj "
+                           f"{wait_seconds // 60}min {wait_seconds % 60}s.")
+        else:
+            wait_seconds = burst_wait
+
+        if attempt < max_retries:
+            print(f"[RATE-LIMIT] 429 na {path} (próba {attempt + 1}/{max_retries + 1}), "
+                  f"czekam {min(wait_seconds, max_wait):.0f}s i ponawiam…")
+            time.sleep(min(wait_seconds, max_wait))
+            continue
+        raise HTTPException(status_code=429, detail=last_detail)
+
+    raise HTTPException(status_code=429, detail=last_detail)
 
 
 def get_available_banks(country: str = "PL") -> list:
@@ -104,8 +147,6 @@ def get_transactions(session_id: str, account_uid: str,
     Nie da się w jednym zapytaniu dostać booked+pending — pending (blokady)
     wymaga osobnego wywołania z transaction_status='PDNG'.
     """
-    headers = get_auth_headers()
-
     params = {}
     if date_from:
         params["date_from"] = date_from
@@ -114,22 +155,7 @@ def get_transactions(session_id: str, account_uid: str,
     if transaction_status:
         params["transaction_status"] = transaction_status
 
-    r = requests.get(
-        f"{API_BASE}/accounts/{account_uid}/transactions",
-        headers=headers,
-        params=params
-    )
-
-    if r.status_code == 429:
-        retry_after = r.headers.get("Retry-After")
-        if retry_after:
-            wait_seconds = int(retry_after)
-            minutes = wait_seconds // 60
-            seconds = wait_seconds % 60
-            detail = f"ING rate limit — poczekaj {minutes}min {seconds}s przed kolejnym zapytaniem."
-        else:
-            detail = "ING chwilowo blokuje zapytania (rate limit). Poczekaj kilka minut i spróbuj ponownie."
-        raise HTTPException(status_code=429, detail=detail)
+    r = _api_get(f"/accounts/{account_uid}/transactions", params)
 
     if r.status_code != 200:
         raise HTTPException(
@@ -151,17 +177,7 @@ def get_account_details(account_uid: str) -> dict:
     credit_limit pozwala policzyć blokady bez ręcznej konfiguracji limitu:
     blokady = booked (ITBD) + credit_limit − available (ITAV).
     """
-    headers = get_auth_headers()
-    r = requests.get(
-        f"{API_BASE}/accounts/{account_uid}/details",
-        headers=headers,
-    )
-    if r.status_code == 429:
-        retry_after = r.headers.get("Retry-After")
-        detail = (f"ING rate limit — poczekaj {int(retry_after) // 60}min "
-                  f"{int(retry_after) % 60}s." if retry_after
-                  else "ING chwilowo blokuje zapytania (rate limit).")
-        raise HTTPException(status_code=429, detail=detail)
+    r = _api_get(f"/accounts/{account_uid}/details")
     if r.status_code != 200:
         raise HTTPException(
             status_code=500,
@@ -183,20 +199,7 @@ def get_balances(account_uid: str) -> list:
     nie są dostępne jako transakcje PDNG, widać je tylko w saldach:
     booked - available).
     """
-    headers = get_auth_headers()
-    r = requests.get(
-        f"{API_BASE}/accounts/{account_uid}/balances",
-        headers=headers,
-    )
-
-    if r.status_code == 429:
-        retry_after = r.headers.get("Retry-After")
-        if retry_after:
-            wait_seconds = int(retry_after)
-            detail = f"ING rate limit — poczekaj {wait_seconds // 60}min {wait_seconds % 60}s."
-        else:
-            detail = "ING chwilowo blokuje zapytania (rate limit)."
-        raise HTTPException(status_code=429, detail=detail)
+    r = _api_get(f"/accounts/{account_uid}/balances")
 
     if r.status_code != 200:
         raise HTTPException(
