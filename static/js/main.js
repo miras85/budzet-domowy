@@ -6,7 +6,7 @@ import * as Charts from './charts.js';
 // Import Komponentów
 import LoginView from './components/LoginView.js';
 import DashboardView from './components/DashboardView.js?v=56';
-import AccountsView from './components/AccountsView.js?v=3';
+import AccountsView from './components/AccountsView.js?v=4';
 import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
 import SettingsView from './components/SettingsView.js?v=55';
