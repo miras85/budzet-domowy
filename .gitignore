@@ -7,3 +7,4 @@ venv/
 alembic.ini
 *.pem
 *.pem
+.auto_import_env
