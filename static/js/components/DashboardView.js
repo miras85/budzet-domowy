@@ -23,8 +23,8 @@ export default {
                     <div class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Dostępne środki (ROR)</div>
                     <div class="text-4xl font-bold text-white tracking-tight leading-none">{{ formatMoney(dashboard.disposable_balance) }}</div>
                     <div class="inline-flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full mt-3 border border-white/10">
-                        <span class="text-[10px] text-blue-100 font-medium">Razem ze środkami na cele:</span>
-                        <span class="text-xs font-bold text-white">{{ formatMoney(dashboard.total_balance) }}</span>
+                        <span class="text-[10px] text-blue-100 font-medium">Razem z celami i gotówką:</span>
+                        <span class="text-xs font-bold text-white">{{ formatMoney(dashboard.total_incl_goals_cash) }}</span>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">

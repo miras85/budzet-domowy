@@ -5,7 +5,7 @@ import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=56';
+import DashboardView from './components/DashboardView.js?v=57';
 import AccountsView from './components/AccountsView.js?v=4';
 import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
@@ -54,7 +54,7 @@ const app = createApp({
             selectedChartSegment: null,
             
             // Dane
-            dashboard: { total_balance: 0, disposable_balance: 0, forecast_ror: 0, savings_realized: 0, savings_rate: 0, total_debt: 0, monthly_income_realized: 0, monthly_income_forecast: 0, monthly_expenses_realized: 0, monthly_expenses_forecast: 0, goals_monthly_need: 0, goals_total_saved: 0, recent_transactions: [], period_start: '', period_end: '' },
+            dashboard: { total_balance: 0, total_incl_goals_cash: 0, disposable_balance: 0, forecast_ror: 0, savings_realized: 0, savings_rate: 0, total_debt: 0, monthly_income_realized: 0, monthly_income_forecast: 0, monthly_expenses_realized: 0, monthly_expenses_forecast: 0, goals_monthly_need: 0, goals_total_saved: 0, recent_transactions: [], period_start: '', period_end: '' },
             accounts: [], categories: [],
             loansData: { loans: [], upcoming: [], total_monthly_payments: 0, period_start: '', period_end: '' },
             loanAlerts: {
@@ -336,6 +336,7 @@ const app = createApp({
             // Reset wrażliwych danych
             this.dashboard = {
                 total_balance: 0,
+                total_incl_goals_cash: 0,
                 disposable_balance: 0,
                 forecast_ror: 0,
                 savings_realized: 0,

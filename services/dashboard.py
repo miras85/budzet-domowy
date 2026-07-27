@@ -18,20 +18,30 @@ def get_dashboard_data(db: Session, offset: int, user_id: int):
 
     raw_ror = db.query(func.sum(models.Account.balance)).filter(
         models.Account.user_id == user_id,
-        models.Account.is_savings == False
+        models.Account.is_savings == False,
+        models.Account.bban.isnot(None),
+        models.Account.bban != ''
     ).scalar()
     disposable_balance = float(raw_ror) if raw_ror is not None else 0.0
 
-    # Obniż "dostępne środki" o zablokowane środki (blokady kartowe/autoryzacje).
-    # NIE jest to sprzężenie z ING podczas importu — używamy salda policzonego
-    # z transakcji w apce i odejmujemy zapisany snapshot blocked_funds
-    # (liczony przy imporcie: max(0, ITBD + limit_debetu − ITAV)).
+    # Obniż "dostępne środki (ROR)" o zablokowane środki (blokady kartowe/autoryzacje).
+    # "ROR" = konta rozliczeniowe Z powiązaniem bankowym (bban niepuste) — GOTÓWKA
+    # (konto bez bban) jest z tej pozycji WYKLUCZONA (trafia tylko do linii
+    # "Razem z celami i gotówką"). NIE jest to sprzężenie z ING podczas importu —
+    # używamy salda policzonego z transakcji w apce i odejmujemy zapisany snapshot
+    # blocked_funds (liczony przy imporcie: max(0, ITBD + limit_debetu − ITAV)).
     raw_blocked = db.query(func.sum(models.Account.blocked_funds)).filter(
         models.Account.user_id == user_id,
-        models.Account.is_savings == False
+        models.Account.is_savings == False,
+        models.Account.bban.isnot(None),
+        models.Account.bban != ''
     ).scalar()
     blocked_total = float(raw_blocked) if raw_blocked is not None else 0.0
     disposable_balance -= blocked_total
+
+    # "Razem z celami i gotówką" = suma sald WSZYSTKICH kont (ROR + gotówka +
+    # oszczędnościowe/cele) pomniejszona o zablokowane środki.
+    total_incl_goals_cash = total_balance - blocked_total
 
     raw_debt = db.query(func.sum(models.Loan.remaining_amount)).filter(
         models.Loan.user_id == user_id
@@ -217,6 +227,7 @@ def get_dashboard_data(db: Session, offset: int, user_id: int):
 
     return {
         "total_balance": total_balance,
+        "total_incl_goals_cash": total_incl_goals_cash,
         "disposable_balance": disposable_balance,
         "forecast_ror": forecast_ror,
         "savings_realized": savings_realized,
