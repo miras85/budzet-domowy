@@ -11,7 +11,7 @@ import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
 import SettingsView from './components/SettingsView.js?v=57';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
-import SearchView from './components/SearchView.js?v=1';
+import SearchView from './components/SearchView.js?v=2';
 import ImportModal from './components/ImportModal.js';
 import TheNavigation from './components/TheNavigation.js?v=3';
 import LoanAlertsModal from './components/LoanAlertsModal.js?v=1';  // NOWY

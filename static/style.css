@@ -53,6 +53,14 @@ body {
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 
+/* Nagłówek pełnoekranowej wyszukiwarki — musi być ZAWSZE co najmniej 56px
+   (dawne pt-14) NAWET gdy urządzenie nie ma wcięcia (desktop/stare telefony),
+   a na iPhone z Dynamic Island dodatkowo min. 12px zapasu POD wyspą. Łączenie
+   "pt-14 safe-top" na jednym elemencie nie działało — obie klasy ustawiają tę
+   samą właściwość padding-top, więc wygrywała tylko jedna z nich (kolejność
+   ładowania CSS), przez co przycisk "Zamknij" bywał częściowo zasłonięty. */
+.search-header { padding-top: max(calc(env(safe-area-inset-top) + 12px), 3.5rem); }
+
 /* ANIMACJE PRZEJŚCIA */
 .slide-next-enter-active, .slide-next-leave-active,
 .slide-prev-enter-active, .slide-prev-leave-active {

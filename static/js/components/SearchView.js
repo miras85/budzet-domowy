@@ -5,7 +5,7 @@ export default {
     setup() { return { ...Utils }; },
     template: `
     <div class="fixed inset-0 z-[100] bg-slate-900 flex flex-col animate-fade-in">
-        <div class="px-5 pt-14 pb-4 flex justify-between items-center bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-10 safe-top"><h2 class="text-xl font-bold text-white">Szukaj i Analizuj</h2><button @click="$emit('close')" class="text-slate-400 text-sm font-bold bg-slate-800 px-3 py-1.5 rounded-lg">Zamknij</button></div>
+        <div class="search-header px-5 pb-4 flex justify-between items-center bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-10"><h2 class="text-xl font-bold text-white">Szukaj i Analizuj</h2><button @click="$emit('close')" class="text-slate-400 text-sm font-bold bg-slate-800 px-3 py-1.5 rounded-lg">Zamknij</button></div>
         <div class="flex-1 overflow-y-auto p-5 pb-32">
             <div class="space-y-4 mb-6">
                 <div class="relative"><input v-model="searchCriteria.q" @keyup.enter="$emit('perform-search')" type="text" placeholder="Szukaj w opisach..." class="w-full bg-slate-800 text-white p-3 pl-10 rounded-xl border border-slate-700 outline-none focus:border-blue-500"><div class="absolute left-3 top-3.5 text-slate-500">🔍</div></div>

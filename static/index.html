@@ -12,7 +12,7 @@
     <link rel="icon" href="/static/icon_v2.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/style.css?v=32">
+    <link rel="stylesheet" href="/static/style.css?v=33">
     <style>
         [v-cloak] { display: none !important; }
         .big-amount-input { background-color: transparent !important; border: none !important; outline: none !important; box-shadow: none !important; text-align: center; font-size: 3rem; font-weight: 800; color: white; width: 100%; padding: 0; margin: 0; }
@@ -34,7 +34,7 @@
 <body>
     <div id="app" class="h-screen flex flex-col bg-slate-900" v-cloak>
         <!-- TOASTS -->
-        <div class="fixed top-0 left-0 right-0 z-[100] flex flex-col items-center gap-2 p-4 pointer-events-none safe-top">
+        <div class="fixed top-0 left-0 right-0 z-[120] flex flex-col items-center gap-2 p-4 pointer-events-none safe-top">
             <transition-group name="toast">
                 <div v-for="toast in toasts" :key="toast.id" class="pointer-events-auto glass-panel px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 min-w-[300px] max-w-sm border-l-4 backdrop-blur-md" :class="{'border-green-500': toast.type === 'success', 'border-red-500': toast.type === 'error', 'border-blue-500': toast.type === 'info'}">
                     <div class="text-lg">{{ toast.type === 'success' ? '✅' : (toast.type === 'error' ? '🛑' : 'ℹ️') }}</div>
@@ -214,7 +214,7 @@
             </div>
 
             <!-- Modal: szybkie przypisanie kategorii (widok "Bez kategorii") -->
-            <div v-if="assigningCategoryTx" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="assigningCategoryTx = null">
+            <div v-if="assigningCategoryTx" class="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="assigningCategoryTx = null">
                 <div class="glass-panel w-full max-w-md rounded-2xl p-5">
                     <h3 class="text-lg font-bold text-white mb-1">Przypisz kategorię</h3>
                     <p class="text-xs text-slate-400 mb-4 truncate">{{ assigningCategoryTx.desc }}</p>
@@ -285,6 +285,6 @@
             
         </div>
     </div>
-    <script type="module" src="/static/js/main.js?v=106"></script>
+    <script type="module" src="/static/js/main.js?v=107"></script>
 </body>
 </html>
