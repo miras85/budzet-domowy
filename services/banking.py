@@ -659,6 +659,37 @@ def parse_ing_transactions(transactions: list, default_account_id: int,
         deduped.append(p)
     result = deduped
 
+    # Zabezpieczenie #2: ING/Enable Banking czasem księguje JEDEN przelew
+    # własny (między naszymi kontami) jako DWA osobne wpisy NA TYM SAMYM
+    # koncie, z różnymi entry_reference tego samego dnia (potwierdzone na
+    # żywych danych: "Bonus Mirek" 36200 zł i "Przelew własny" 100/1000 zł —
+    # każdy pojawił się 2x z kolejnymi numerami referencji). Powyższe
+    # parowanie DBIT/CRDT tego NIE łapie, bo dotyczy innego przypadku (ta
+    # sama transakcja widziana z DWÓCH RÓŻNYCH kont, nie dwa wpisy na jednym).
+    # Tu: w obrębie TEGO SAMEGO importu, jeśli dwa transfery mają identyczną
+    # parę kont + datę + kwotę, zostaje tylko ten z NIŻSZĄ entry_reference
+    # (wcześniejszy wg banku), reszta jest odrzucana z logiem ostrzegawczym.
+    # RYZYKO: jeśli kiedyś faktycznie wykonasz dwa NIEZALEŻNE, prawdziwe
+    # przelewy tej samej kwoty tego samego dnia między tymi samymi kontami,
+    # drugi zostanie tu błędnie odrzucony jako "duplikat". Mało prawdopodobne,
+    # ale świadomie akceptowany kompromis (korzyść > ryzyko).
+    transfer_seen = {}
+    final = []
+    for p in sorted(result, key=lambda x: x.get("reference") or ""):
+        if p.get("type") == "transfer" and p.get("target_account_id"):
+            key = (p.get("account_id"), p.get("target_account_id"),
+                   p.get("date"), round(float(p.get("amount") or 0), 2))
+            if key in transfer_seen:
+                print(f"[PARSE] ⚠️ Pomijam DUPLIKAT przelewu własnego (ta sama para "
+                      f"kont+data+kwota w tym imporcie): {p.get('account_id')}->"
+                      f"{p.get('target_account_id')} {p.get('date')} {p.get('amount')} "
+                      f"ref={p.get('reference')!r} (zachowano ref={transfer_seen[key]!r}) "
+                      f"{p.get('description', '')[:40]!r}")
+                continue
+            transfer_seen[key] = p.get("reference")
+        final.append(p)
+    result = final
+
     # Kolejność w obrębie dnia jest istotna. NIE polegamy na kolejności zwracania
     # przez ING (bywa różna, a przy scalaniu wielu kont zależy od kolejności pętli),
     # tylko sortujemy DETERMINISTYCZNIE po (data, entry_reference).
