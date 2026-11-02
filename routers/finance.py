@@ -72,10 +72,11 @@ def search_transactions(
     q: Optional[str] = None, date_from: Optional[date] = None, date_to: Optional[date] = None,
     category_id: Optional[int] = None, account_id: Optional[int] = None, type: Optional[str] = None,
     min_amount: Optional[float] = None, max_amount: Optional[float] = None,
+    uncategorized: bool = False,
     db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)
 ):
     owner_id = database.get_data_owner_id(current_user, db)
-    result = transaction.search_transactions(db, q, date_from, date_to, category_id, account_id, type, min_amount, max_amount, owner_id)
+    result = transaction.search_transactions(db, q, date_from, date_to, category_id, account_id, type, min_amount, max_amount, owner_id, uncategorized=uncategorized)
     for tx in result["transactions"]:
         if tx["category"] and tx["category"] != "-" and tx["category"] != "Transfer":
             cat = db.query(models.Category).filter(
@@ -86,6 +87,18 @@ def search_transactions(
                 tx["category_icon"] = cat.icon_name
                 tx["category_color"] = cat.color
     return result
+
+@router.put("/transactions/{tx_id}/category")
+def assign_transaction_category(
+    tx_id: int, payload: schemas.CategoryAssign,
+    db: Session = Depends(database.get_db), current_user: models.User = Depends(database.get_current_user)
+):
+    """Szybkie przypisanie kategorii transakcji bez kategorii (widok 'Bez kategorii').
+    Tylko admin — identyczne ograniczenie jak przy zwykłej edycji transakcji."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Tylko admin może przypisywać kategorie")
+    owner_id = database.get_data_owner_id(current_user, db)
+    return transaction.assign_category(db, tx_id, payload.category_id, payload.apply_to_similar, owner_id)
 
 # --- CELE ---
 @router.get("/goals")

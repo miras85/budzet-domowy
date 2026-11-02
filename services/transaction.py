@@ -11,6 +11,15 @@ def create_transaction(db: Session, tx: schemas.TransactionCreate, user_id: int)
     try:
         cat_id = None
 
+        # Sanityzacja: "-" i "Transfer" to etykiety WYŚWIETLANE przez backend
+        # dla braku kategorii / transferu (services/dashboard.py, search_transactions
+        # niżej) — NIE są to prawdziwe nazwy kategorii. Front potrafił je odesłać
+        # z powrotem przy edycji/kopiowaniu/realizacji transakcji bez kategorii,
+        # co tworzyło realną kategorię o nazwie "-" w bazie. Traktujemy je jak
+        # brak category_name niezależnie od tego, co faktycznie przyszło w payloadzie.
+        if tx.category_name and tx.category_name.strip() in ("-", "Transfer"):
+            tx.category_name = None
+
         if tx.loan_id:
             if not tx.category_name:
                 tx.category_name = "Spłata zobowiązań"
@@ -87,6 +96,10 @@ def update_transaction(db: Session, tx_id: int, tx_data: schemas.TransactionCrea
     ).first()
     if not old_tx:
         raise HTTPException(status_code=404, detail="Transakcja nie istnieje")
+
+    # Sanityzacja — patrz komentarz w create_transaction powyżej.
+    if tx_data.category_name and tx_data.category_name.strip() in ("-", "Transfer"):
+        tx_data.category_name = None
 
     try:
         if old_tx.status == 'zrealizowana':
@@ -181,7 +194,8 @@ def delete_transaction(db: Session, tx_id: int, user_id: int):
 
 
 def search_transactions(db: Session, q, date_from, date_to, category_id,
-                        account_id, type, min_amount, max_amount, user_id: int):
+                        account_id, type, min_amount, max_amount, user_id: int,
+                        uncategorized: bool = False):
 
     # Pobierz konta usera
     all_account_ids = [
@@ -200,7 +214,16 @@ def search_transactions(db: Session, q, date_from, date_to, category_id,
     if q: query = query.filter(models.Transaction.description.ilike(f"%{q}%"))
     if date_from: query = query.filter(models.Transaction.date >= date_from)
     if date_to: query = query.filter(models.Transaction.date <= date_to)
-    if category_id: query = query.filter(models.Transaction.category_id == category_id)
+    # "uncategorized" ma priorytet nad category_id — to specjalny filtr
+    # "transakcje bez przypisanej kategorii" (i nigdy transfery, bo te z
+    # definicji nie mają/nie potrzebują kategorii).
+    if uncategorized:
+        query = query.filter(
+            models.Transaction.category_id.is_(None),
+            models.Transaction.type != 'transfer'
+        )
+    elif category_id:
+        query = query.filter(models.Transaction.category_id == category_id)
     if account_id: query = query.filter(
         (models.Transaction.account_id == account_id) |
         (models.Transaction.target_account_id == account_id)
@@ -223,7 +246,8 @@ def search_transactions(db: Session, q, date_from, date_to, category_id,
         if t.type == 'transfer': cat_name = "Transfer"
         tx_list.append({
             "id": t.id, "desc": t.description, "amount": float(t.amount),
-            "type": t.type, "category": cat_name, "date": str(t.date),
+            "type": t.type, "category": cat_name, "category_id": t.category_id,
+            "date": str(t.date),
             "account_id": t.account_id, "target_account_id": t.target_account_id
         })
 
@@ -236,3 +260,64 @@ def search_transactions(db: Session, q, date_from, date_to, category_id,
             "count": len(tx_list)
         }
     }
+
+
+def assign_category(db: Session, tx_id: int, category_id: int,
+                    apply_to_similar: bool, user_id: int):
+    """Szybkie ręczne przypisanie kategorii transakcji bez kategorii
+    (widok "Bez kategorii"). Uczy wzorzec sprzedawca->kategoria, a z opcją
+    apply_to_similar nadaje tę samą kategorię WSZYSTKIM innym transakcjom
+    tego samego usera i typu, bez kategorii, z tym samym tokenem sprzedawcy
+    w opisie — żeby jedna decyzja rozwiązała cały backlog od tego sprzedawcy.
+    """
+    tx = db.query(models.Transaction).join(
+        models.Account, models.Transaction.account_id == models.Account.id
+    ).filter(
+        models.Transaction.id == tx_id,
+        models.Account.user_id == user_id
+    ).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transakcja nie istnieje")
+
+    cat = db.query(models.Category).filter(
+        models.Category.id == category_id,
+        models.Category.user_id == user_id
+    ).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Kategoria nie istnieje")
+
+    try:
+        tx.category_id = cat.id
+        updated_count = 1
+
+        categorization.learn_pattern(
+            db, user_id=user_id, category_id=cat.id,
+            description=tx.description,
+        )
+
+        if apply_to_similar:
+            token = categorization.get_merchant_token(description=tx.description)
+            if token:
+                similar = db.query(models.Transaction).join(
+                    models.Account, models.Transaction.account_id == models.Account.id
+                ).filter(
+                    models.Account.user_id == user_id,
+                    models.Transaction.id != tx.id,
+                    models.Transaction.type == tx.type,
+                    models.Transaction.category_id.is_(None),
+                    models.Transaction.description.ilike(f"%{token}%"),
+                ).all()
+                for other in similar:
+                    other.category_id = cat.id
+                    updated_count += 1
+
+        db.commit()
+        return {
+            "updated_count": updated_count,
+            "category_id": cat.id,
+            "category_name": cat.name
+        }
+    except Exception as e:
+        db.rollback()
+        print(f"❌ BŁĄD assign_category: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd przypisania kategorii: {str(e)}")

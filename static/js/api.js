@@ -78,7 +78,17 @@ export const transactions = {
     async create(txData) { return authFetch('/api/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(txData) }); },
     async update(id, txData) { return authFetch(`/api/transactions/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(txData) }); },
     async delete(id) { return authFetch(`/api/transactions/${id}`, { method: 'DELETE' }); },
-    async search(params) { return (await authFetch(`/api/transactions/search?${params}`)).json(); }
+    async search(params) { return (await authFetch(`/api/transactions/search?${params}`)).json(); },
+    async assignCategory(id, categoryId, applyToSimilar) {
+        const res = await authFetch(`/api/transactions/${id}/category`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category_id: categoryId, apply_to_similar: applyToSimilar })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Błąd przypisania kategorii');
+        return data;
+    }
 };
 
 export const accounts = {

@@ -79,6 +79,13 @@ def _token(merchant_key=None, description=None):
     return kw.lower() if kw else None
 
 
+def get_merchant_token(merchant_key: str = None, description: str = None):
+    """Wrapper publiczny na _token — do użycia poza tym modułem (np. przy
+    ręcznym przypisywaniu kategorii i stosowaniu jej do podobnych transakcji
+    tego samego sprzedawcy, services/transaction.assign_category)."""
+    return _token(merchant_key, description)
+
+
 def _learned_lookup(db, user_id: int, token: str):
     """Najczęstsza (max hit_count) nauczona kategoria dla tokenu; istniejąca u usera."""
     row = db.query(models.LearnedPattern).join(

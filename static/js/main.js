@@ -1,17 +1,17 @@
 import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import * as Utils from './utils.js';
-import * as API from './api.js?v=60';
+import * as API from './api.js?v=61';
 import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=59';
+import DashboardView from './components/DashboardView.js?v=60';
 import AccountsView from './components/AccountsView.js?v=4';
 import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
 import SettingsView from './components/SettingsView.js?v=57';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
-import SearchView from './components/SearchView.js';
+import SearchView from './components/SearchView.js?v=1';
 import ImportModal from './components/ImportModal.js';
 import TheNavigation from './components/TheNavigation.js?v=3';
 import LoanAlertsModal from './components/LoanAlertsModal.js?v=1';  // NOWY
@@ -47,7 +47,7 @@ const app = createApp({
             importAccountId: null, importData: null, importTargetAccountId: null,
             
             // Filtry
-            filterStatus: 'all', filterAccount: '', isPlanned: false, newCategoryName: '', categorySearch: '',
+            filterStatus: 'all', filterAccount: '', filterUncategorizedOnly: false, isPlanned: false, newCategoryName: '', categorySearch: '',
             
             // Wykresy
             chartColors: ['#ef4444', '#f97316', '#eab308', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'],
@@ -72,6 +72,15 @@ const app = createApp({
             goals: [], overrides: [], recurringList: [], duePayments: [],
             security: { oldPassword: '', newPassword: '', newUsername: '', newUserPass: '', inviteLink: '', inviteExpires: '' },
             userRole: 'admin',
+
+            // Scroll — powrót do edytowanej transakcji zamiast skoku na górę (patrz scrollToTx)
+            pendingScrollTxId: null,
+            savedScrollTop: null,
+
+            // Szybkie przypisywanie kategorii (widok "Bez kategorii")
+            assigningCategoryTx: null,
+            assignCategoryId: null,
+            applyToSimilarCategory: true,
             
             banking: {
                 connected: false,
@@ -151,6 +160,9 @@ const app = createApp({
                     txs = txs.filter(tx => tx.account_id === accountId || tx.target_account_id === accountId);
                 }
             }
+            if (this.filterUncategorizedOnly) {
+                txs = txs.filter(tx => tx.type !== 'transfer' && !tx.category_id);
+            }
             return txs;
         },
         loanAlertsCount() {
@@ -169,7 +181,7 @@ const app = createApp({
             const groups = {};
             this.filteredTransactions.forEach(tx => {
                 if (tx.type === 'transfer') return;
-                const catName = tx.category || 'Bez kategorii';
+                const catName = (!tx.category || tx.category === '-') ? 'Bez kategorii' : tx.category;
                 if (!groups[catName]) {
                     const catObj = this.categories.find(c => c.name === catName);
                     groups[catName] = { name: catName, total: 0, count: 0, transactions: [], limit: catObj ? parseFloat(catObj.monthly_limit) : 0, id: catObj ? catObj.id : null };
@@ -422,9 +434,27 @@ const app = createApp({
             if(this.newTx.type === 'transfer' && !this.newTx.target_account_id) return this.notify('error', "Wybierz konto docelowe!");
             if(!this.newTx.description) return this.notify('error', "Opis jest wymagany!");
             const payload = { ...this.newTx, status: this.isPlanned ? 'planowana' : 'zrealizowana' };
-            try { if (this.editingTxId) await API.transactions.update(this.editingTxId, payload); else await API.transactions.create(payload); this.resetForm(); this.currentTab = 'dashboard'; this.fetchData(); this.fetchAccounts(); this.notify('success', this.editingTxId ? 'Zaktualizowano' : 'Dodano'); } catch(e) { this.notify('error', 'Błąd zapisu'); }
+            const wasEditingId = this.editingTxId;
+            try {
+                if (wasEditingId) await API.transactions.update(wasEditingId, payload);
+                else await API.transactions.create(payload);
+                this.resetForm();
+                this.currentTab = 'dashboard';
+                await this.fetchData();
+                this.fetchAccounts();
+                this.notify('success', wasEditingId ? 'Zaktualizowano' : 'Dodano');
+                if (wasEditingId) this.scrollToTx(wasEditingId);
+            } catch(e) { this.notify('error', 'Błąd zapisu'); }
         },
-        async realizeTx(tx) { const payload = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: tx.date.split('T')[0], status: 'zrealizowana' }; await API.transactions.update(tx.id, payload); this.fetchData(); this.fetchAccounts(); this.notify('success', 'Zrealizowano'); },
+        async realizeTx(tx) {
+            const catName = (tx.category && tx.category !== '-' && tx.category !== 'Transfer') ? tx.category : '';
+            const payload = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: catName, loan_id: tx.loan_id, date: tx.date.split('T')[0], status: 'zrealizowana' };
+            await API.transactions.update(tx.id, payload);
+            await this.fetchData();
+            this.fetchAccounts();
+            this.notify('success', 'Zrealizowano');
+            this.scrollToTx(tx.id);
+        },
         async deleteTx(id) { if(!confirm("Usunąć?")) return; await API.transactions.delete(id); this.fetchData(); this.fetchAccounts(); this.notify('info', 'Usunięto'); },
         
         async createTestAccount() { const name = prompt("Nazwa:"); if(name) { await API.accounts.create({ name: name, type: "bank", balance: 0, is_savings: false }); this.fetchAccounts(); this.notify('success', 'Utworzono'); } },
@@ -715,7 +745,14 @@ const app = createApp({
             if(this.searchCriteria.q) params.append('q', this.searchCriteria.q);
             if(this.searchCriteria.date_from) params.append('date_from', this.searchCriteria.date_from);
             if(this.searchCriteria.date_to) params.append('date_to', this.searchCriteria.date_to);
-            if(this.searchCriteria.category_id) params.append('category_id', this.searchCriteria.category_id);
+            // 'none' to specjalna wartość sentinel (opcja "🏷️ Bez kategorii" w selekcie
+            // lub kliknięcie odznaki na dashboardzie) — zamieniana na osobny parametr
+            // uncategorized, bo to NIE jest realne id kategorii.
+            if (this.searchCriteria.category_id === 'none') {
+                params.append('uncategorized', 'true');
+            } else if (this.searchCriteria.category_id) {
+                params.append('category_id', this.searchCriteria.category_id);
+            }
             if(this.searchCriteria.account_id) params.append('account_id', this.searchCriteria.account_id);
             if(this.searchCriteria.type && this.searchCriteria.type !== 'all') params.append('type', this.searchCriteria.type);
             if(this.searchCriteria.min_amount) params.append('min_amount', this.searchCriteria.min_amount);
@@ -729,6 +766,33 @@ const app = createApp({
         clearSearchFilters() {
             this.searchCriteria = { q: '', date_from: '', date_to: '', category_id: null, account_id: null, type: 'all', min_amount: '', max_amount: '' };
             this.searchResults = null;
+        },
+        openUncategorizedSearch() {
+            this.searchCriteria = { q: '', date_from: '', date_to: '', category_id: 'none', account_id: null, type: 'all', min_amount: '', max_amount: '' };
+            this.showSearch = true;
+            this.searchResults = null;
+            this.performSearch();
+        },
+        openAssignCategory(tx) {
+            this.assigningCategoryTx = tx;
+            this.assignCategoryId = null;
+            this.applyToSimilarCategory = true;
+        },
+        async submitAssignCategory() {
+            if (!this.assignCategoryId || !this.assigningCategoryTx) return;
+            try {
+                const data = await API.transactions.assignCategory(
+                    this.assigningCategoryTx.id, this.assignCategoryId, this.applyToSimilarCategory
+                );
+                this.assigningCategoryTx = null;
+                await this.fetchData();
+                if (this.searchResults !== null) this.performSearch();
+                this.notify('success', data.updated_count > 1
+                    ? `Przypisano kategorię do ${data.updated_count} transakcji`
+                    : 'Przypisano kategorię');
+            } catch(e) {
+                this.notify('error', e.message || 'Błąd przypisania kategorii');
+            }
         },
 
         triggerImport(accountId) { this.importTargetAccountId = accountId; const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv'; input.onchange = e => { if (e.target.files.length > 0) this.processImportFile(e.target.files[0]); }; input.click(); },
@@ -791,7 +855,13 @@ const app = createApp({
         },
         editTxFromModal(tx) { this.selectedCategory = null; this.editTx(tx); },
         async realizeTxFromModal(tx) { await this.realizeTx(tx); this.selectedCategory = null; },
-        copyTx(tx) { this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: tx.category, loan_id: tx.loan_id, date: new Date().toISOString().split('T')[0] }; this.isPlanned = false; this.editingTxId = null; this.currentTab = 'add'; this.selectedCategory = null; window.scrollTo(0,0); this.notify('info', 'Skopiowano'); },
+        copyTx(tx) {
+            const catName = (tx.category && tx.category !== '-' && tx.category !== 'Transfer') ? tx.category : '';
+            this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, target_account_id: tx.target_account_id, category_name: catName, loan_id: tx.loan_id, date: new Date().toISOString().split('T')[0] };
+            this.isPlanned = false; this.editingTxId = null; this.currentTab = 'add'; this.selectedCategory = null;
+            this.scrollContainerToTop();
+            this.notify('info', 'Skopiowano');
+        },
         handleLoanChange() {
             if (this.newTx.loan_id) {
                 const loan = this.activeLoans.find(l => l.id === this.newTx.loan_id);
@@ -836,9 +906,54 @@ const app = createApp({
                 })
                 .catch(e => console.error('Błąd search:', e));
         },
-        editTx(tx) { this.editingTxId = tx.id; this.isPlanned = (tx.status === 'planowana'); this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, category_name: tx.category_name, loan_id: tx.loan_id, date: tx.date.split('T')[0], target_account_id: tx.target_account_id }; this.currentTab = 'add'; },
-        cancelEdit() { this.resetForm(); this.currentTab = 'dashboard'; },
+        editTx(tx) {
+            // Zapamiętaj gdzie byliśmy, żeby po zapisie/anulowaniu wrócić dokładnie
+            // do tej transakcji zamiast skakać na górę dashboardu (patrz scrollToTx).
+            this.pendingScrollTxId = tx.id;
+            const container = this.$refs.scrollContainer;
+            this.savedScrollTop = container ? container.scrollTop : 0;
+
+            this.editingTxId = tx.id;
+            this.isPlanned = (tx.status === 'planowana');
+            const catName = (tx.category_name && tx.category_name !== '-' && tx.category_name !== 'Transfer') ? tx.category_name : '';
+            this.newTx = { description: tx.desc, amount: tx.amount, type: tx.type, account_id: tx.account_id, category_name: catName, loan_id: tx.loan_id, date: tx.date.split('T')[0], target_account_id: tx.target_account_id };
+            this.currentTab = 'add';
+            this.scrollContainerToTop();
+        },
+        cancelEdit() {
+            const txId = this.pendingScrollTxId;
+            this.resetForm();
+            this.currentTab = 'dashboard';
+            this.scrollToTx(txId);
+        },
         resetForm() { this.editingTxId = null; this.isPlanned = false; this.showCategorySelector = false; this.newTx = { description: '', amount: '', type: 'expense', account_id: this.accounts[0]?.id, target_account_id: null, category_name: '', loan_id: null, date: new Date().toISOString().split('T')[0] }; },
+        openAddTab() { this.resetForm(); this.currentTab = 'add'; this.scrollContainerToTop(); },
+        scrollContainerToTop() {
+            this.$nextTick(() => {
+                if (this.$refs.scrollContainer) this.$refs.scrollContainer.scrollTop = 0;
+            });
+        },
+        async scrollToTx(txId) {
+            await this.$nextTick();
+            const container = this.$refs.scrollContainer;
+            if (!container) return;
+            const el = txId ? document.getElementById('tx-' + txId) : null;
+            if (el) {
+                // Wyśrodkuj edytowaną transakcję w widocznym obszarze, zamiast
+                // tylko "scrollIntoView" (które potrafi przykleić ją do samej
+                // krawędzi i zasłonić dolną nawigacją).
+                const containerRect = container.getBoundingClientRect();
+                const elRect = el.getBoundingClientRect();
+                const offset = elRect.top - containerRect.top - (containerRect.height / 2) + (elRect.height / 2);
+                container.scrollTop += offset;
+            } else if (this.savedScrollTop !== null) {
+                // Transakcja wypadła z aktualnie widocznej listy (np. zmiana
+                // daty przesunęła ją poza okres/filtr) — wróć tam, gdzie było.
+                container.scrollTop = this.savedScrollTop;
+            }
+            this.pendingScrollTxId = null;
+            this.savedScrollTop = null;
+        },
         editLoan(loan) { this.editingLoan = { ...loan, total_amount: loan.total, remaining_amount: loan.remaining, monthly_payment: loan.monthly, next_payment_date: loan.next_date }; },
         openFundGoal(goal) { this.fundingGoal = goal; const defaultSource = this.accounts[0]?.id; const defaultTarget = this.savingsAccounts[0]?.id; this.fundData = { source_account_id: defaultSource, target_savings_id: defaultTarget, amount: '' }; },
         openTransferGoal(goal) { this.transferingGoal = goal; this.transferData = { target_goal_id: null, amount: '' }; },

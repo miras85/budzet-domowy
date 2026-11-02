@@ -49,7 +49,7 @@
 
         <!-- APP -->
         <div v-else class="flex-1 flex flex-col h-full relative overflow-hidden">
-            <div class="flex-1 overflow-y-auto overflow-x-hidden pb-32 safe-top">
+            <div ref="scrollContainer" class="flex-1 overflow-y-auto overflow-x-hidden pb-32 safe-top">
                 <!-- HEADER -->
                 <div class="px-5 pt-6 pb-2 flex justify-between items-center">
                     <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700">
@@ -65,7 +65,7 @@
                 </div>
 
                 <!-- VIEWS -->
-                <dashboard-view v-if="currentTab === 'dashboard'" :dashboard="dashboard" :accounts="accounts" :filtered-transactions="filteredTransactions" :grouped-categories="groupedCategories" :expense-categories="expenseCategories" :budget-ranking="budgetRanking" :banking="banking" v-model:view-mode="viewMode" v-model:budget-ranking-expanded="budgetRankingExpanded" v-model:filter-status="filterStatus" v-model:filter-account="filterAccount" v-model:selected-chart-segment="selectedChartSegment" :chart-colors="chartColors" :user-role="userRole" @change-period="changePeriod" @realize-tx="realizeTx" @copy-tx="copyTx" @edit-tx="editTx" @delete-tx="deleteTx" @open-category="openCategoryDetails" @render-charts="renderChart"></dashboard-view>
+                <dashboard-view v-if="currentTab === 'dashboard'" :dashboard="dashboard" :accounts="accounts" :filtered-transactions="filteredTransactions" :grouped-categories="groupedCategories" :expense-categories="expenseCategories" :budget-ranking="budgetRanking" :banking="banking" v-model:view-mode="viewMode" v-model:budget-ranking-expanded="budgetRankingExpanded" v-model:filter-status="filterStatus" v-model:filter-account="filterAccount" v-model:filter-uncategorized-only="filterUncategorizedOnly" v-model:selected-chart-segment="selectedChartSegment" :chart-colors="chartColors" :user-role="userRole" @change-period="changePeriod" @realize-tx="realizeTx" @copy-tx="copyTx" @edit-tx="editTx" @delete-tx="deleteTx" @open-category="openCategoryDetails" @render-charts="renderChart" @assign-category="openAssignCategory" @open-uncategorized-search="openUncategorizedSearch"></dashboard-view>
                 <accounts-view v-if="currentTab === 'accounts'" :accounts="accounts" :user-role="userRole" @create-account="createTestAccount" @edit-account="editAccount" @delete-account="deleteAccount" @trigger-import="triggerImport"></accounts-view>
                 <goals-view v-if="currentTab === 'goals'" :goals="goals" :savings-accounts="savingsAccounts" v-model:show-add-goal="showAddGoal" :new-goal="newGoal" :show-archived-goals="showArchivedGoals" :archived-goals="archivedGoals" :user-role="userRole" @submit-goal="submitGoal" @delete-goal="deleteGoal" @open-fund="openFundGoal" @edit-goal="editGoal" @open-withdraw="openWithdrawGoal" @open-transfer="openTransferGoal" @archive-goal="archiveGoal" @toggle-archive="toggleArchivedGoals"></goals-view>
                 <payments-view v-if="currentTab === 'payments'" :filtered-loans="filteredLoans" v-model:show-paid-loans="showPaidLoans" v-model:show-add-loan="showAddLoan" :new-loan="newLoan" v-model:show-add-recurring="showAddRecurring" :new-recurring="newRecurring" :recurring-list="recurringList" :accounts="accounts" :filtered-categories="filteredCategories" v-model:category-search="categorySearch" :loans-data="loansData" :user-role="userRole" @submit-loan="submitLoan" @edit-loan="editLoan" @submit-recurring="submitRecurring" @delete-recurring="deleteRecurring" @edit-recurring="editRecurring"></payments-view>
@@ -79,11 +79,11 @@
                 v-model:current-tab="currentTab"
                 :loan-alerts-count="loanAlertsCount"
                 :user-role="userRole"
-                @open-add="resetForm(); currentTab = 'add'">
+                @open-add="openAddTab">
             </the-navigation>
 
             <!-- MODALS -->
-            <search-view v-if="showSearch" :search-criteria="searchCriteria" :search-results="searchResults" :search-summary="searchSummary" :categories="categories" @close="closeSearch" @perform-search="performSearch" @clear-filters="clearSearchFilters" @apply-preset="applyDatePreset"></search-view>
+            <search-view v-if="showSearch" :search-criteria="searchCriteria" :search-results="searchResults" :search-summary="searchSummary" :categories="categories" :user-role="userRole" @close="closeSearch" @perform-search="performSearch" @clear-filters="clearSearchFilters" @apply-preset="applyDatePreset" @assign-category="openAssignCategory"></search-view>
             <import-modal v-if="importData" :import-data="importData" :categories="categories" @close="importData = null" @submit="submitImport"></import-modal>
             
             <!-- INNE MODALE (POZOSTAŁE) -->
@@ -212,6 +212,30 @@
                     
                 </div>
             </div>
+
+            <!-- Modal: szybkie przypisanie kategorii (widok "Bez kategorii") -->
+            <div v-if="assigningCategoryTx" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="assigningCategoryTx = null">
+                <div class="glass-panel w-full max-w-md rounded-2xl p-5">
+                    <h3 class="text-lg font-bold text-white mb-1">Przypisz kategorię</h3>
+                    <p class="text-xs text-slate-400 mb-4 truncate">{{ assigningCategoryTx.desc }}</p>
+                    <select v-model="assignCategoryId" class="input-dark w-full p-3 rounded-xl mb-3 bg-slate-800 border border-slate-700">
+                        <option :value="null" disabled>Wybierz kategorię...</option>
+                        <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+                    </select>
+                    <label class="flex items-center gap-3 p-3 bg-slate-800/50 rounded-xl border border-slate-700 cursor-pointer mb-3">
+                        <input type="checkbox" v-model="applyToSimilarCategory" class="w-4 h-4 rounded bg-slate-700 border-slate-500">
+                        <div>
+                            <div class="text-sm text-white font-bold">Zastosuj do podobnych</div>
+                            <div class="text-xs text-slate-400">Przypisz tę kategorię innym transakcjom tego samego sprzedawcy, które też nie mają kategorii</div>
+                        </div>
+                    </label>
+                    <div class="flex gap-2">
+                        <button @click="assigningCategoryTx = null" class="flex-1 py-3 rounded-xl font-bold text-slate-400 bg-slate-800 text-sm">Anuluj</button>
+                        <button @click="submitAssignCategory" :disabled="!assignCategoryId" class="flex-[2] py-3 rounded-xl font-bold text-white bg-blue-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed">Przypisz</button>
+                    </div>
+                </div>
+            </div>
+
             <div v-if="editingLoan" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="editingLoan = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Edytuj Kredyt</h3><div class="space-y-3"><input v-model="editingLoan.name" placeholder="Nazwa" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.total_amount" type="number" placeholder="Kwota całk." class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.remaining_amount" type="number" placeholder="Pozostało" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.monthly_payment" type="number" placeholder="Rata" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><input v-model="editingLoan.next_payment_date" type="date" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="updateLoan" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Zapisz zmiany</button></div></div></div>
             <div v-if="fundingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="fundingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Zasil cel: {{ fundingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Z konta</label><select v-model="fundData.source_account_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="acc in accounts" :value="acc.id">{{ acc.name }} ({{ formatMoney(acc.available) }}) {{ acc.is_savings ? '🔒' : '💳' }}</option></select><div v-if="isSourceROR" class="bg-blue-900/20 p-3 rounded-xl border border-blue-500/30"><label class="text-xs text-blue-300 uppercase font-bold mb-1 block">Automatyczny transfer na:</label><select v-model="fundData.target_savings_id" class="input-dark w-full max-w-full p-2 rounded-lg text-sm outline-none bg-slate-900 appearance-none"><option v-for="acc in savingsAccounts" :value="acc.id">{{ acc.name }}</option></select><div class="text-[10px] text-blue-400 mt-1">System automatycznie przeleje środki na to konto oszczędnościowe.</div></div><input v-model="fundData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitFundGoal" class="w-full bg-green-600 py-3 rounded-xl font-bold text-sm">Zasil Cel</button></div></div></div>
             <div v-if="transferingGoal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="transferingGoal = null"><div class="glass-panel w-full max-w-md rounded-2xl p-5"><h3 class="text-xl font-bold text-white mb-4">Przenieś z: {{ transferingGoal.name }}</h3><div class="space-y-3"><label class="text-xs text-slate-400 uppercase font-bold">Na cel</label><select v-model="transferData.target_goal_id" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><option v-for="g in goals.filter(g => g.id !== transferingGoal.id)" :value="g.id">{{ g.name }}</option></select><input v-model="transferData.amount" type="number" placeholder="Kwota" class="input-dark w-full max-w-full p-3 rounded-xl text-base outline-none bg-transparent appearance-none"><button @click="submitTransferGoal" class="w-full bg-blue-600 py-3 rounded-xl font-bold text-sm">Przenieś</button></div></div></div>
@@ -261,6 +285,6 @@
             
         </div>
     </div>
-    <script type="module" src="/static/js/main.js?v=105"></script>
+    <script type="module" src="/static/js/main.js?v=106"></script>
 </body>
 </html>

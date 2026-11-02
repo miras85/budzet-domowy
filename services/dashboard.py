@@ -220,10 +220,20 @@ def get_dashboard_data(db: Session, offset: int, user_id: int):
             cat_name = "Transfer"
         tx_list.append({
             "id": t.id, "desc": t.description, "amount": float(t.amount),
-            "type": t.type, "category": cat_name, "date": str(t.date),
+            "type": t.type, "category": cat_name, "category_id": t.category_id,
+            "date": str(t.date),
             "account_id": t.account_id, "target_account_id": t.target_account_id,
             "category_name": cat_name, "status": t.status, "loan_id": t.loan_id
         })
+
+    # Licznik "bez kategorii" — CAŁA historia usera (nie tylko bieżący okres),
+    # żeby pokazać realny rozmiar zaległości niezależnie od przeglądanego
+    # miesiąca. Transfery pomijane (z definicji nie mają kategorii).
+    uncategorized_total = db.query(models.Transaction).filter(
+        models.Transaction.type != 'transfer',
+        models.Transaction.category_id.is_(None),
+        models.Transaction.account_id.in_(all_account_ids)
+    ).count()
 
     return {
         "total_balance": total_balance,
@@ -240,6 +250,7 @@ def get_dashboard_data(db: Session, offset: int, user_id: int):
         "goals_monthly_need": goals_monthly_need,
         "goals_total_saved": goals_total_saved,
         "recent_transactions": tx_list,
+        "uncategorized_total": uncategorized_total,
         "period_start": str(start_date),
         "period_end": str(end_date)
     }

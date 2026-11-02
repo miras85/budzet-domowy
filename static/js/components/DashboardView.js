@@ -2,8 +2,8 @@ import * as Utils from '../utils.js';
 import { ICON_PATHS } from '../icons.js?v=51';
 
 export default {
-    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking','budgetRankingExpanded', 'userRole', 'banking'],
-    emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts', 'update:budgetRankingExpanded'],
+    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'filterUncategorizedOnly', 'chartColors', 'selectedChartSegment','budgetRanking','budgetRankingExpanded', 'userRole', 'banking'],
+    emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:filterUncategorizedOnly', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts', 'update:budgetRankingExpanded', 'assign-category', 'open-uncategorized-search'],
     setup() {
         return {
             ...Utils,
@@ -38,6 +38,16 @@ export default {
                 <span class="text-yellow-400 font-bold">Dane z banku nieaktualne</span>
                 <span class="text-slate-300"> — ostatni udany import {{ banking.daysSinceSync }} dni temu.</span>
             </div>
+        </div>
+        <!-- Odznaka: transakcje bez kategorii (CAŁA historia, nie tylko bieżący okres) -->
+        <div v-if="dashboard.uncategorized_total > 0"
+             @click="$emit('open-uncategorized-search')"
+             class="bg-blue-900/20 border border-blue-500/30 p-3 rounded-xl mb-4 flex items-center justify-between gap-2 cursor-pointer hover:bg-blue-900/30 transition-colors">
+            <div class="text-xs flex items-center gap-2">
+                <span class="text-lg">🏷️</span>
+                <span class="text-blue-300 font-bold">{{ dashboard.uncategorized_total }} {{ dashboard.uncategorized_total === 1 ? 'transakcja bez kategorii' : 'transakcji bez kategorii' }}</span>
+            </div>
+            <span class="text-blue-400 text-xs font-bold">Zobacz ›</span>
         </div>
         <div class="gradient-card rounded-3xl p-6 shadow-2xl shadow-blue-900/20 relative overflow-hidden mb-4">
             <div class="relative z-10">
@@ -179,11 +189,18 @@ export default {
                     <button @click="$emit('update:filterStatus', 'planowana')" :class="filterStatus === 'planowana' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Plan.</button>
                 </div>
             </div>
+            <div v-if="viewMode === 'list'" class="flex justify-end">
+                <button @click="$emit('update:filterUncategorizedOnly', !filterUncategorizedOnly)"
+                        :class="filterUncategorizedOnly ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800 text-slate-400 border-slate-700'"
+                        class="px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all">
+                    🏷️ Bez kat.
+                </button>
+            </div>
         </div>
 
         <div v-if="viewMode === 'list'" class="space-y-3">
             <div v-if="filteredTransactions.length === 0" class="text-center text-slate-500 py-10">Brak transakcji</div>
-            <div v-for="tx in filteredTransactions" :key="tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3 group transition-all" :class="tx.status === 'planowana' ? 'opacity-70 border-dashed border-slate-600' : ''">
+            <div v-for="tx in filteredTransactions" :key="tx.id" :id="'tx-' + tx.id" class="glass-panel p-3 rounded-2xl flex items-center gap-3 group transition-all" :class="tx.status === 'planowana' ? 'opacity-70 border-dashed border-slate-600' : ''">
                 <div class="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0" 
                      :style="{ backgroundColor: (tx.category_color || (tx.type === 'income' ? '#22c55e' : '#ef4444')) + '20', color: tx.category_color || (tx.type === 'income' ? '#22c55e' : '#ef4444') }">
                     <svg v-if="tx.category_icon && iconPaths[tx.category_icon]" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" class="w-5 h-5">
@@ -194,7 +211,14 @@ export default {
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="font-semibold text-slate-200 text-sm truncate pr-1">{{ tx.desc }}</div>
-                    <div class="text-xs text-slate-500 truncate">{{ tx.category }} • {{ formatDateShort(tx.date) }}</div>
+                    <div class="text-xs text-slate-500 truncate flex items-center gap-1.5">
+                        <template v-if="tx.type !== 'transfer' && !tx.category_id">
+                            <button v-if="userRole === 'admin'" @click.stop="$emit('assign-category', tx)" class="text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded-full hover:bg-blue-500/20 transition-colors shrink-0">＋ Kategoria</button>
+                            <span v-else class="text-yellow-500/70 shrink-0">Bez kategorii</span>
+                            <span>• {{ formatDateShort(tx.date) }}</span>
+                        </template>
+                        <template v-else>{{ tx.category }} • {{ formatDateShort(tx.date) }}</template>
+                    </div>
                 </div>
                 <div class="flex flex-col items-end gap-1 shrink-0">
                     <div :class="getColorClass(tx.type)" class="font-bold text-sm whitespace-nowrap">{{ tx.type === 'income' ? '+' : (tx.type === 'transfer' ? '' : '-') }}{{ formatMoney(tx.amount) }}</div>

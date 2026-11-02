@@ -23,6 +23,10 @@ class TransactionCreate(BaseModel):
     loan_id: Optional[int] = None
     status: str = "zrealizowana"
 
+class CategoryAssign(BaseModel):
+    category_id: int
+    apply_to_similar: bool = False
+
 class AccountUpdate(BaseModel):
     name: str
     type: str
