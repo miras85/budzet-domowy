@@ -102,4 +102,17 @@ async def terms():
 
 @app.get("/sw.js")
 async def service_worker():
-    return FileResponse('static/sw.js', media_type='application/javascript')
+    # Service Worker MUSI być zawsze świeży. Bez jawnego Cache-Control
+    # Cloudflare domyślnie nakłada max-age=14400 (4h) na pliki .js, co
+    # na iOS/Safari powoduje, że przeglądarka przez 4h w ogóle NIE pyta
+    # serwera o nową wersję sw.js — aktualizacja PWA (nowy kod, nowe
+    # bumpy ?v=) jest wtedy niewidoczna dla usera mimo udanego deployu.
+    return FileResponse(
+        'static/sw.js',
+        media_type='application/javascript',
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+    )
