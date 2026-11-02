@@ -92,9 +92,7 @@ const app = createApp({
             newLoan: { name: '', total_amount: '', remaining_amount: '', monthly_payment: '', next_payment_date: new Date().toISOString().split('T')[0] },
             newGoal: { name: '', target_amount: '', deadline: new Date().toISOString().split('T')[0], account_id: null },
             newRecurring: { name: '', amount: '', day_of_month: '', category_name: '', account_id: null },
-            newOverride: { year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: 25 },
-            
-            touchStartX: 0, touchEndX: 0
+            newOverride: { year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: 25 }
         }
     },
     computed: {
@@ -763,9 +761,6 @@ const app = createApp({
         },
 
         changePeriod(delta) { this.transitionName = delta > 0 ? 'slide-next' : 'slide-prev'; this.periodOffset += delta; this.fetchData(); },
-        handleTouchStart(e) { this.touchStartX = e.changedTouches[0].screenX; },
-        handleTouchEnd(e) { this.touchEndX = e.changedTouches[0].screenX; this.handleSwipe(); },
-        handleSwipe() { if (this.currentTab !== 'dashboard') return; const diff = this.touchEndX - this.touchStartX; if (diff > 50) this.changePeriod(-1); if (diff < -50) this.changePeriod(1); },
         
         async openCategoryDetails(cat) {
             this.selectedCategory = cat;
