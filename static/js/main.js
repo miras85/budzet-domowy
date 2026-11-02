@@ -714,7 +714,11 @@ const app = createApp({
             try {
                 const data = await API.banking.import(dateFrom, dateTo);
                 this.banking.lastImportResult = `✅ Zaimportowano: ${data.imported}, pominięto: ${data.skipped}`;
-                this.notify('success', `Zaimportowano ${data.imported} transakcji!`);
+                if (data.complete === false) {
+                    this.notify('info', `Import częściowy: zaimportowano ${data.imported} transakcji. Bank przerwał wysyłkę danych w trakcie importu — reszta zostanie dociągnięta przy kolejnym imporcie (ręcznym lub automatycznym o 6:00).`);
+                } else {
+                    this.notify('success', `Zaimportowano ${data.imported} transakcji!`);
+                }
                 await this.refreshAllData();
             } catch(e) {
                 this.notify('error', e.message || 'Błąd importu');

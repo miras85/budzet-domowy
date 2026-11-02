@@ -269,8 +269,12 @@ def sync_transactions(
         all_transactions = []
         for account in accounts:
             account_uid = account.get("uid")
-            txs = banking_service.get_transactions(
-                session.session_id, account_uid, date_from, date_to
+            # Podgląd pokazuje max 5 transakcji — paginate=False (tylko
+            # pierwsza strona), żeby nie zużywać budżetu ING na kolejne
+            # strony, które i tak nie zostaną pokazane.
+            txs, _ = banking_service.get_transactions(
+                session.session_id, account_uid, date_from, date_to,
+                paginate=False
             )
             all_transactions.extend(txs)
 
@@ -363,16 +367,21 @@ def import_transactions(
 
         all_transactions = []
         session_uids = []
+        import_complete = True
         for account in accounts:
             account_uid = account.get("uid")
             if account_uid:
                 session_uids.append(account_uid)
             # Transakcje zaksięgowane. ING zwraca WYŁĄCZNIE status BOOK —
             # blokady kartowe NIE są dostępne jako transakcje PDNG (potwierdzone).
-            txs = banking_service.get_transactions(
+            # paginate=True (domyślne) — pobiera WSZYSTKIE strony, nie tylko
+            # pierwszą (patrz komentarz w services/banking.get_transactions).
+            txs, acc_complete = banking_service.get_transactions(
                 session.session_id, account_uid, date_from, date_to
             )
             all_transactions.extend(txs)
+            if not acc_complete:
+                import_complete = False
 
         ror_account = db.query(models.Account).filter(
             models.Account.user_id == current_user.id,
@@ -520,7 +529,18 @@ def import_transactions(
         session.sync_count_today = (session.sync_count_today or 0) + 1
         session.sync_count_date = today
 
-        session.last_sync = datetime.now()
+        # last_sync = data OSTATNIEGO PEŁNEGO importu — jeśli stronicowanie
+        # zostało przerwane (import_complete=False), NIE przesuwamy jej:
+        # auto_import.sh liczy lukę od last_sync, więc przesunięcie tutaj
+        # ukryłoby brakujące transakcje przed auto-nadrabianiem (kolejny
+        # import — ręczny albo nocny cron — sam dociągnie resztę dzięki
+        # temu że "luka" formalnie nadal istnieje).
+        if import_complete:
+            session.last_sync = datetime.now()
+        else:
+            print(f"[IMPORT] Import NIEPEŁNY (stronicowanie przerwane) — "
+                  f"last_sync NIE przesunięty, luka zostaje otwarta do "
+                  f"kolejnego importu.")
         session.status = "active"  # samonaprawa, gdyby wcześniej był "expired"
         db.commit()
 
@@ -532,7 +552,8 @@ def import_transactions(
             "goals_adjusted": len(goal_adjustments),
             "syncs_used_today": session.sync_count_today,
             "syncs_remaining_today": max(0, 4 - session.sync_count_today),
-            "period": f"{date_from} → {date_to}"
+            "period": f"{date_from} → {date_to}",
+            "complete": import_complete
         }
 
     except HTTPException as e:

@@ -161,30 +161,88 @@ def create_session(code: str) -> dict:
 
 def get_transactions(session_id: str, account_uid: str,
                      date_from: str = None, date_to: str = None,
-                     transaction_status: str = None) -> list:
+                     transaction_status: str = None,
+                     paginate: bool = True, max_pages: int = 50) -> tuple:
     """Pobiera transakcje konta z Enable Banking.
 
     transaction_status: pojedynczy status wg specyfikacji (np. 'BOOK' albo 'PDNG').
     UWAGA: parametr jest JEDNOWARTOŚCIOWY, a domyślnie API zwraca tylko 'BOOK'.
     Nie da się w jednym zapytaniu dostać booked+pending — pending (blokady)
     wymaga osobnego wywołania z transaction_status='PDNG'.
+
+    STRONICOWANIE: Enable Banking zwraca transakcje stronami — odpowiedź
+    może zawierać "continuation_key", co oznacza że jest kolejna strona.
+    Przez długi czas kod czytał WYŁĄCZNIE pierwszą stronę (typowo ~50-60
+    transakcji), więc przy dłuższym zakresie dat (import po przerwie,
+    aktywne konto z wieloma operacjami) reszta transakcji była CICHO
+    gubiona — bez błędu, bez ostrzeżenia. Stąd realne dziury w historii
+    (np. brakujące dni, brakująca wypłata wynagrodzenia) mimo że import
+    "się udawał".
+
+    Domyślnie (paginate=True) pobiera WSZYSTKIE strony, max `max_pages`
+    (zabezpieczenie przed nieskończoną pętlą/przesadnie długim importem).
+    Z paginate=False pobiera tylko pierwszą stronę — używane w /sync
+    (podgląd pokazuje max 5 transakcji, więc kolejne strony są
+    niepotrzebne i tylko zużywałyby dzienny budżet zapytań do ING).
+
+    Zwraca krotkę (transactions: list, complete: bool) — complete=False
+    oznacza że przerwano przed wyczerpaniem stron (max_pages osiągnięty
+    LUB błąd na którejś z kolejnych stron, np. 429) i wywołujący powinien
+    NIE traktować tego jak pełnego pobrania (np. nie przesuwać last_sync).
     """
-    params = {}
-    if date_from:
-        params["date_from"] = date_from
-    if date_to:
-        params["date_to"] = date_to
-    if transaction_status:
-        params["transaction_status"] = transaction_status
+    all_transactions = []
+    continuation_key = None
+    page = 0
+    complete = True
 
-    r = _api_get(f"/accounts/{account_uid}/transactions", params)
+    while True:
+        page += 1
+        params = {}
+        if date_from:
+            params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
+        if transaction_status:
+            params["transaction_status"] = transaction_status
+        if continuation_key:
+            params["continuation_key"] = continuation_key
 
-    if r.status_code != 200:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Błąd pobierania transakcji: {r.text}"
-        )
-    return r.json().get("transactions", [])
+        r = _api_get(f"/accounts/{account_uid}/transactions", params)
+
+        if r.status_code != 200:
+            if page == 1:
+                # Błąd na PIERWSZEJ stronie — zachowanie jak dotychczas:
+                # to prawdziwy błąd (np. CLOSED_SESSION), wywołujący musi
+                # go zobaczyć i obsłużyć (np. oznaczyć sesję jako wygasłą).
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Błąd pobierania transakcji: {r.text}"
+                )
+            # Błąd na KOLEJNEJ stronie (np. 429 — bank przestał odpowiadać
+            # w trakcie stronicowania) — zwróć to co już mamy, oznacz jako
+            # niepełne. Wywołujący (import) i tak zaimportuje te transakcje,
+            # a luka zostanie dociągnięta przy kolejnym imporcie (last_sync
+            # NIE jest przesuwany dla niepełnego importu).
+            print(f"[PAGES] {account_uid[:8]}…: przerwano na stronie {page}: {r.text[:200]}")
+            complete = False
+            break
+
+        data = r.json()
+        batch = data.get("transactions", [])
+        all_transactions.extend(batch)
+
+        continuation_key = data.get("continuation_key")
+        if not continuation_key or not paginate:
+            break
+        if page >= max_pages:
+            print(f"[PAGES] {account_uid[:8]}…: osiągnięto limit {max_pages} stron, "
+                  f"są kolejne (continuation_key obecny) — oznaczam jako niepełne.")
+            complete = False
+            break
+
+    print(f"[PAGES] {account_uid[:8]}…: {page} {'strona' if page == 1 else 'stron'}, "
+          f"{len(all_transactions)} transakcji, complete={complete}")
+    return all_transactions, complete
 
 
 def get_account_details(account_uid: str) -> dict:
