@@ -17,12 +17,19 @@ export default {
     },
     template: `
     <div class="px-6">
-        <!-- Baner: wygasła sesja bankowa lub nieaktualne dane importu -->
+        <!-- Baner: wygasła sesja / wygasa wkrótce / nieaktualne dane importu (w kolejności ważności) -->
         <div v-if="banking && banking.sessionExpired" class="bg-red-900/30 border border-red-500/40 p-3 rounded-xl mb-4 flex items-center gap-2">
             <span class="text-lg">⚠️</span>
             <div class="text-xs">
                 <span class="text-red-400 font-bold">Połączenie z bankiem wygasło.</span>
                 <span class="text-slate-300"> Przejdź do Ustawień, aby połączyć ponownie.</span>
+            </div>
+        </div>
+        <div v-else-if="banking && banking.expiringSoon" class="bg-yellow-900/30 border border-yellow-500/40 p-3 rounded-xl mb-4 flex items-center gap-2">
+            <span class="text-lg">⏳</span>
+            <div class="text-xs">
+                <span class="text-yellow-400 font-bold">Zgoda bankowa wygasa za {{ banking.daysUntilExpiry }} {{ banking.daysUntilExpiry === 1 ? 'dzień' : 'dni' }}.</span>
+                <span class="text-slate-300"> Odnów połączenie w Ustawieniach.</span>
             </div>
         </div>
         <div v-else-if="banking && banking.daysSinceSync !== null && banking.daysSinceSync > 2" class="bg-yellow-900/30 border border-yellow-500/40 p-3 rounded-xl mb-4 flex items-center gap-2">

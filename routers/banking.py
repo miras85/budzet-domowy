@@ -9,6 +9,13 @@ from services.banking import parse_ing_transactions
 
 router = APIRouter(prefix="/api/banking", tags=["Banking"])
 
+# Throttling krótkoterminowy /sync (debounce 60s) trzymany W PAMIĘCI procesu,
+# NIE w BankSession.last_sync — ten licznik ma znaczyć WYŁĄCZNIE datę ostatniego
+# UDANEGO IMPORTU (używa go też auto_import.sh do wykrywania luki przy nadrabianiu
+# zaległości). Bezpieczne: usługa działa jako pojedynczy proces uvicorn (bez
+# --workers), więc stan w pamięci jest spójny między żądaniami.
+_last_sync_attempt_at: dict = {}
+
 
 def _is_closed_session_error(exc: HTTPException) -> bool:
     """Rozpoznaje błąd zamkniętej/wygasłej sesji Enable Banking (ING) po treści.
@@ -30,6 +37,34 @@ def _mark_session_expired(db: Session, session: "models.BankSession"):
         db.commit()
         print(f"[BANKING] Sesja bankowa user_id={session.user_id} oznaczona jako "
               f"wygasła (CLOSED_SESSION) — wymagane ponowne połączenie.")
+
+
+def _check_and_mark_expiry(db: Session, session: "models.BankSession") -> bool:
+    """Sprawdza czy sesja jest wygasła — jawnie (status=='expired', np. po
+    CLOSED_SESSION z banku) ALBO po dacie (minął valid_until, zgoda PSD2
+    wygasła niezależnie od tego czy ktokolwiek próbował jej użyć).
+
+    Gdy wygaśnięcie wykryte TYLKO po dacie (status w bazie wciąż 'active'),
+    od razu zapisuje 'expired' — żeby kolejne wywołania (filtr w /sync,
+    /import) nie marnowały zapytania do banku, które i tak zakończyłoby się
+    tym samym błędem.
+
+    Zwraca True jeśli sesja jest wygasła.
+    """
+    if session.status == "expired":
+        return True
+    if session.valid_until:
+        vu = session.valid_until
+        if vu.tzinfo is None:
+            vu = vu.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) >= vu:
+            session.status = "expired"
+            db.commit()
+            print(f"[BANKING] Sesja bankowa user_id={session.user_id} wygasła wg "
+                  f"valid_until ({session.valid_until}) — oznaczona jako expired "
+                  f"bez kontaktu z bankiem.")
+            return True
+    return False
 
 
 @router.get("/banks")
@@ -81,7 +116,11 @@ def banking_callback(
             existing.session_id = session_id
             existing.status = "active"
             existing.valid_until = datetime.now(timezone.utc) + timedelta(days=180)
-            existing.last_sync = None
+            # UWAGA: celowo NIE zerujemy last_sync. To pole ma znaczyć "data
+            # ostatniego udanego importu" i jest używane przez auto_import.sh
+            # do auto-nadrabiania luki po ponownym połączeniu (np. po wygaśnięciu
+            # sesji) — wyzerowanie go tutaj skasowałoby informację o tym, od
+            # kiedy trzeba nadrobić zaległe transakcje.
         else:
             bank_session = models.BankSession(
                 user_id=user.id,
@@ -121,7 +160,9 @@ def get_banking_status(
             "valid_until": None,
             "last_sync": None,
             "syncs_used_today": 0,
-            "syncs_remaining_today": 4
+            "syncs_remaining_today": 4,
+            "days_until_expiry": None,
+            "expiring_soon": False
         }
 
     # Licznik dzienny z resetem na nowy dzień (bez zapisu do bazy — tylko odczyt)
@@ -131,18 +172,36 @@ def get_banking_status(
     else:
         syncs_used = 0
 
+    # Wygaśnięcie wykrywane PROAKTYWNIE po dacie (valid_until), nie tylko po
+    # fakcie (CLOSED_SESSION z banku) — patrz _check_and_mark_expiry. Dzięki
+    # temu przycisk "Połącz z ING" pojawia się od razu po minięciu valid_until,
+    # zero zapytań do banku potrzebnych do tego wykrycia.
+    expired = _check_and_mark_expiry(db, session)
+
+    days_until_expiry = None
+    expiring_soon = False
+    if session.valid_until and not expired:
+        vu = session.valid_until
+        if vu.tzinfo is None:
+            vu = vu.replace(tzinfo=timezone.utc)
+        delta = vu - datetime.now(timezone.utc)
+        days_until_expiry = max(0, delta.days)
+        expiring_soon = days_until_expiry <= 7
+
     # "connected" odzwierciedla REALNY stan sesji (status=="active"), nie tylko
     # istnienie wiersza w bazie — inaczej wygasła sesja (CLOSED_SESSION) wyglądałaby
     # na połączoną i UI nie pokazałby przycisku ponownego połączenia.
     return {
-        "connected": session.status == "active",
-        "session_expired": session.status == "expired",
+        "connected": not expired,
+        "session_expired": expired,
         "bank_name": session.bank_name,
         "status": session.status,
         "valid_until": str(session.valid_until) if session.valid_until else None,
         "last_sync": str(session.last_sync) if session.last_sync else None,
         "syncs_used_today": syncs_used,
-        "syncs_remaining_today": max(0, 4 - syncs_used)
+        "syncs_remaining_today": max(0, 4 - syncs_used),
+        "days_until_expiry": days_until_expiry,
+        "expiring_soon": expiring_soon
     }
 @router.post("/sync")
 def sync_transactions(
@@ -161,15 +220,21 @@ def sync_transactions(
     if not session:
         raise HTTPException(status_code=404, detail="Brak aktywnego połączenia z bankiem")
 
-    from datetime import timezone
+    if _check_and_mark_expiry(db, session):
+        raise HTTPException(
+            status_code=401,
+            detail="Sesja bankowa wygasła — połącz ponownie z ING w Ustawieniach."
+        )
 
-    # Throttling krótkoterminowy — min 60 sekund między KAŻDĄ próbą (nawet nieudaną)
-    if session.last_sync:
-        now = datetime.now(timezone.utc)
-        last = session.last_sync
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=timezone.utc)
-        seconds_since_last = (now - last).total_seconds()
+    # Throttling krótkoterminowy — min 60 sekund między KAŻDĄ próbą (nawet nieudaną).
+    # Trzymany W PAMIĘCI (nie w last_sync!) — last_sync ma znaczyć WYŁĄCZNIE datę
+    # ostatniego udanego IMPORTU (/import), używaną przez auto_import.sh do
+    # auto-nadrabiania luki. Zapisywanie tu last_sync fałszowało tę datę przy
+    # każdej, nawet nieudanej, próbie podglądu.
+    now_utc = datetime.now(timezone.utc)
+    last_attempt = _last_sync_attempt_at.get(session.id)
+    if last_attempt:
+        seconds_since_last = (now_utc - last_attempt).total_seconds()
         if seconds_since_last < 60:
             wait = int(60 - seconds_since_last)
             raise HTTPException(
@@ -190,9 +255,8 @@ def sync_transactions(
         session.sync_count_today = 0
         session.sync_count_date = today
 
-    # Zapisz próbę NATYCHMIAST (dla debounce) — niezależnie od wyniku
-    session.last_sync = datetime.now()
-    db.commit()
+    # Zapisz próbę NATYCHMIAST (dla debounce, w pamięci) — niezależnie od wyniku
+    _last_sync_attempt_at[session.id] = now_utc
 
     try:
         accounts = banking_service.get_session_accounts(session.session_id)
@@ -265,6 +329,12 @@ def import_transactions(
 
     if not session:
         raise HTTPException(status_code=404, detail="Brak aktywnego połączenia z bankiem")
+
+    if _check_and_mark_expiry(db, session):
+        raise HTTPException(
+            status_code=401,
+            detail="Sesja bankowa wygasła — połącz ponownie z ING w Ustawieniach."
+        )
 
     # Throttling PSD2 — WSPÓLNY dzienny budżet 4 dostępy/24h (RTS 2018/389
     # art. 36(5)(b); EBA Q&A 2018_4210: limit liczy się PER-DOSTĘP, nie per-endpoint).

@@ -5,11 +5,11 @@ import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=58';
+import DashboardView from './components/DashboardView.js?v=59';
 import AccountsView from './components/AccountsView.js?v=4';
 import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
-import SettingsView from './components/SettingsView.js?v=56';
+import SettingsView from './components/SettingsView.js?v=57';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
@@ -80,6 +80,8 @@ const app = createApp({
                 validUntil: '',
                 lastSync: null,
                 daysSinceSync: null,
+                daysUntilExpiry: null,
+                expiringSoon: false,
                 syncsUsed: 0,
                 dateFrom: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
                 dateTo: new Date().toISOString().split('T')[0],
@@ -635,7 +637,9 @@ const app = createApp({
                 this.banking.validUntil = data.valid_until;
                 this.banking.lastSync = data.last_sync;
                 this.banking.syncsUsed = data.syncs_used_today || 0;
-                // Świeżość danych: ile dni od ostatniego UDANEGO importu/syncu.
+                this.banking.daysUntilExpiry = data.days_until_expiry ?? null;
+                this.banking.expiringSoon = !!data.expiring_soon;
+                // Świeżość danych: ile dni od ostatniego UDANEGO importu.
                 // Liczone niezależnie od "connected" — żeby baner "dane nieaktualne"
                 // zadziałał też, gdy sesja wygasła (last_sync jest wtedy "zamrożony").
                 if (data.last_sync) {

@@ -158,9 +158,12 @@ export default {
                             <div>
                                 <p class="text-xs text-green-400 font-bold">✅ Połączono z {{ banking.bankName }}</p>
                                 <p class="text-xs text-slate-500 mt-1">Ważne do: {{ banking.validUntil }}</p>
-                                <p v-if="banking.lastSync" class="text-xs text-slate-500">Ostatnia sync: {{ banking.lastSync }}</p>
+                                <p v-if="banking.lastSync" class="text-xs text-slate-500">Ostatni import: {{ banking.lastSync }}</p>
                                 <p v-if="banking.daysSinceSync !== null && banking.daysSinceSync > 2" class="text-xs text-yellow-400 font-bold mt-1">
                                     ⚠️ Dane nieaktualne: ostatni udany import {{ banking.daysSinceSync }} dni temu
+                                </p>
+                                <p v-if="banking.expiringSoon" class="text-xs text-yellow-400 font-bold mt-1">
+                                    ⏳ Zgoda bankowa wygasa za {{ banking.daysUntilExpiry }} {{ banking.daysUntilExpiry === 1 ? 'dzień' : 'dni' }}
                                 </p>
                             </div>
                             <div class="text-right">
@@ -170,6 +173,12 @@ export default {
                                 </p>
                             </div>
                         </div>
+                        <button
+                            v-if="banking.expiringSoon"
+                            @click="$emit('banking-connect')"
+                            class="w-full mt-3 bg-yellow-600 hover:bg-yellow-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">
+                            🔗 Odnów połączenie
+                        </button>
                     </div>
                     <div v-else-if="banking.sessionExpired" class="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-xl">
                         <p class="text-xs text-red-400 font-bold">⚠️ Połączenie z bankiem wygasło</p>
