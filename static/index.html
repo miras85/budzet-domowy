@@ -65,7 +65,7 @@
                 </div>
 
                 <!-- VIEWS -->
-                <dashboard-view v-if="currentTab === 'dashboard'" :dashboard="dashboard" :accounts="accounts" :filtered-transactions="filteredTransactions" :grouped-categories="groupedCategories" :expense-categories="expenseCategories" :budget-ranking="budgetRanking" v-model:view-mode="viewMode" v-model:budget-ranking-expanded="budgetRankingExpanded" v-model:filter-status="filterStatus" v-model:filter-account="filterAccount" v-model:selected-chart-segment="selectedChartSegment" :chart-colors="chartColors" :user-role="userRole" @change-period="changePeriod" @realize-tx="realizeTx" @copy-tx="copyTx" @edit-tx="editTx" @delete-tx="deleteTx" @open-category="openCategoryDetails" @render-charts="renderChart"></dashboard-view>
+                <dashboard-view v-if="currentTab === 'dashboard'" :dashboard="dashboard" :accounts="accounts" :filtered-transactions="filteredTransactions" :grouped-categories="groupedCategories" :expense-categories="expenseCategories" :budget-ranking="budgetRanking" :banking="banking" v-model:view-mode="viewMode" v-model:budget-ranking-expanded="budgetRankingExpanded" v-model:filter-status="filterStatus" v-model:filter-account="filterAccount" v-model:selected-chart-segment="selectedChartSegment" :chart-colors="chartColors" :user-role="userRole" @change-period="changePeriod" @realize-tx="realizeTx" @copy-tx="copyTx" @edit-tx="editTx" @delete-tx="deleteTx" @open-category="openCategoryDetails" @render-charts="renderChart"></dashboard-view>
                 <accounts-view v-if="currentTab === 'accounts'" :accounts="accounts" :user-role="userRole" @create-account="createTestAccount" @edit-account="editAccount" @delete-account="deleteAccount" @trigger-import="triggerImport"></accounts-view>
                 <goals-view v-if="currentTab === 'goals'" :goals="goals" :savings-accounts="savingsAccounts" v-model:show-add-goal="showAddGoal" :new-goal="newGoal" :show-archived-goals="showArchivedGoals" :archived-goals="archivedGoals" :user-role="userRole" @submit-goal="submitGoal" @delete-goal="deleteGoal" @open-fund="openFundGoal" @edit-goal="editGoal" @open-withdraw="openWithdrawGoal" @open-transfer="openTransferGoal" @archive-goal="archiveGoal" @toggle-archive="toggleArchivedGoals"></goals-view>
                 <payments-view v-if="currentTab === 'payments'" :filtered-loans="filteredLoans" v-model:show-paid-loans="showPaidLoans" v-model:show-add-loan="showAddLoan" :new-loan="newLoan" v-model:show-add-recurring="showAddRecurring" :new-recurring="newRecurring" :recurring-list="recurringList" :accounts="accounts" :filtered-categories="filteredCategories" v-model:category-search="categorySearch" :loans-data="loansData" :user-role="userRole" @submit-loan="submitLoan" @edit-loan="editLoan" @submit-recurring="submitRecurring" @delete-recurring="deleteRecurring" @edit-recurring="editRecurring"></payments-view>
@@ -261,6 +261,6 @@
             
         </div>
     </div>
-    <script type="module" src="/static/js/main.js?v=103"></script>
+    <script type="module" src="/static/js/main.js?v=104"></script>
 </body>
 </html>

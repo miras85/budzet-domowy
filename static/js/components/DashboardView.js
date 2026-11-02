@@ -2,7 +2,7 @@ import * as Utils from '../utils.js';
 import { ICON_PATHS } from '../icons.js?v=51';
 
 export default {
-    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking','budgetRankingExpanded', 'userRole'],
+    props: ['dashboard', 'accounts', 'filteredTransactions', 'groupedCategories', 'expenseCategories', 'viewMode', 'filterStatus', 'filterAccount', 'chartColors', 'selectedChartSegment','budgetRanking','budgetRankingExpanded', 'userRole', 'banking'],
     emits: ['update:viewMode', 'update:filterStatus', 'update:filterAccount', 'update:selectedChartSegment', 'realize-tx', 'copy-tx', 'edit-tx', 'delete-tx', 'open-category', 'render-charts', 'update:budgetRankingExpanded'],
     setup() {
         return {
@@ -17,6 +17,21 @@ export default {
     },
     template: `
     <div class="px-6">
+        <!-- Baner: wygasła sesja bankowa lub nieaktualne dane importu -->
+        <div v-if="banking && banking.sessionExpired" class="bg-red-900/30 border border-red-500/40 p-3 rounded-xl mb-4 flex items-center gap-2">
+            <span class="text-lg">⚠️</span>
+            <div class="text-xs">
+                <span class="text-red-400 font-bold">Połączenie z bankiem wygasło.</span>
+                <span class="text-slate-300"> Przejdź do Ustawień, aby połączyć ponownie.</span>
+            </div>
+        </div>
+        <div v-else-if="banking && banking.daysSinceSync !== null && banking.daysSinceSync > 2" class="bg-yellow-900/30 border border-yellow-500/40 p-3 rounded-xl mb-4 flex items-center gap-2">
+            <span class="text-lg">⚠️</span>
+            <div class="text-xs">
+                <span class="text-yellow-400 font-bold">Dane z banku nieaktualne</span>
+                <span class="text-slate-300"> — ostatni udany import {{ banking.daysSinceSync }} dni temu.</span>
+            </div>
+        </div>
         <div class="gradient-card rounded-3xl p-6 shadow-2xl shadow-blue-900/20 relative overflow-hidden mb-4">
             <div class="relative z-10">
                 <div class="text-center mb-6">

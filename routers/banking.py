@@ -10,6 +10,28 @@ from services.banking import parse_ing_transactions
 router = APIRouter(prefix="/api/banking", tags=["Banking"])
 
 
+def _is_closed_session_error(exc: HTTPException) -> bool:
+    """Rozpoznaje błąd zamkniętej/wygasłej sesji Enable Banking (ING) po treści.
+
+    ING zwraca wtedy 401 z {"error":"CLOSED_SESSION","message":"Session is
+    closed"}, co services/banking.py opakowuje w HTTPException(500, detail=...)
+    zawierający surowy tekst odpowiedzi banku — stąd sprawdzanie po substringu,
+    nie po kodzie HTTP (kod jest naszym, nie bankowym).
+    """
+    detail = str(exc.detail or "")
+    return "CLOSED_SESSION" in detail or "Session is closed" in detail
+
+
+def _mark_session_expired(db: Session, session: "models.BankSession"):
+    """Oznacza sesję bankową jako wygasłą, żeby UI pokazał przycisk ponownego
+    połączenia zamiast cicho ponawiać próby skazane na ten sam błąd."""
+    if session.status != "expired":
+        session.status = "expired"
+        db.commit()
+        print(f"[BANKING] Sesja bankowa user_id={session.user_id} oznaczona jako "
+              f"wygasła (CLOSED_SESSION) — wymagane ponowne połączenie.")
+
+
 @router.get("/banks")
 def get_banks(
     db: Session = Depends(database.get_db),
@@ -58,7 +80,7 @@ def banking_callback(
         if existing:
             existing.session_id = session_id
             existing.status = "active"
-            existing.valid_until = datetime.now(timezone.utc) + timedelta(days=90)
+            existing.valid_until = datetime.now(timezone.utc) + timedelta(days=180)
             existing.last_sync = None
         else:
             bank_session = models.BankSession(
@@ -67,7 +89,7 @@ def banking_callback(
                 bank_name="ING Bank Śląski",
                 bank_country="PL",
                 status="active",
-                valid_until=datetime.now(timezone.utc) + timedelta(days=90)
+                valid_until=datetime.now(timezone.utc) + timedelta(days=180)
             )
             db.add(bank_session)
 
@@ -91,7 +113,16 @@ def get_banking_status(
     ).first()
 
     if not session:
-        return {"connected": False}
+        return {
+            "connected": False,
+            "session_expired": False,
+            "bank_name": None,
+            "status": None,
+            "valid_until": None,
+            "last_sync": None,
+            "syncs_used_today": 0,
+            "syncs_remaining_today": 4
+        }
 
     # Licznik dzienny z resetem na nowy dzień (bez zapisu do bazy — tylko odczyt)
     today = datetime.now().date()
@@ -100,11 +131,15 @@ def get_banking_status(
     else:
         syncs_used = 0
 
+    # "connected" odzwierciedla REALNY stan sesji (status=="active"), nie tylko
+    # istnienie wiersza w bazie — inaczej wygasła sesja (CLOSED_SESSION) wyglądałaby
+    # na połączoną i UI nie pokazałby przycisku ponownego połączenia.
     return {
-        "connected": True,
+        "connected": session.status == "active",
+        "session_expired": session.status == "expired",
         "bank_name": session.bank_name,
         "status": session.status,
-        "valid_until": str(session.valid_until),
+        "valid_until": str(session.valid_until) if session.valid_until else None,
         "last_sync": str(session.last_sync) if session.last_sync else None,
         "syncs_used_today": syncs_used,
         "syncs_remaining_today": max(0, 4 - syncs_used)
@@ -186,9 +221,11 @@ def sync_transactions(
             db=db, user_id=current_user.id
         )
 
-        # SUKCES — zwiększ licznik dzienny
+        # SUKCES — zwiększ licznik dzienny + samonaprawa statusu (gdyby był
+        # wcześniej oznaczony jako "expired", a jednak przeszło — odblokuj).
         session.sync_count_today = (session.sync_count_today or 0) + 1
         session.sync_count_date = today
+        session.status = "active"
         db.commit()
 
         return {
@@ -199,8 +236,12 @@ def sync_transactions(
             "preview": parsed[:5]
         }
 
-    except HTTPException:
-        # BŁĄD (np. 429 z ING) — last_sync już zapisany wyżej, licznik dzienny NIE rośnie
+    except HTTPException as e:
+        # BŁĄD (np. 429 z ING) — last_sync już zapisany wyżej, licznik dzienny NIE rośnie.
+        # Jeśli to zamknięta sesja (CLOSED_SESSION) — oznacz ją jako wygasłą, żeby
+        # UI pokazał przycisk ponownego połączenia zamiast cicho powtarzać ten błąd.
+        if _is_closed_session_error(e):
+            _mark_session_expired(db, session)
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -410,6 +451,7 @@ def import_transactions(
         session.sync_count_date = today
 
         session.last_sync = datetime.now()
+        session.status = "active"  # samonaprawa, gdyby wcześniej był "expired"
         db.commit()
 
         return {
@@ -423,7 +465,11 @@ def import_transactions(
             "period": f"{date_from} → {date_to}"
         }
 
-    except HTTPException:
+    except HTTPException as e:
+        # Jeśli to zamknięta sesja (CLOSED_SESSION) — oznacz ją jako wygasłą,
+        # żeby UI pokazał przycisk ponownego połączenia (patrz /sync wyżej).
+        if _is_closed_session_error(e):
+            _mark_session_expired(db, session)
         raise
     except Exception as e:
         db.rollback()

@@ -5,11 +5,11 @@ import * as Charts from './charts.js';
 
 // Import Komponentów
 import LoginView from './components/LoginView.js';
-import DashboardView from './components/DashboardView.js?v=57';
+import DashboardView from './components/DashboardView.js?v=58';
 import AccountsView from './components/AccountsView.js?v=4';
 import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
-import SettingsView from './components/SettingsView.js?v=55';
+import SettingsView from './components/SettingsView.js?v=56';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js';
 import ImportModal from './components/ImportModal.js';
@@ -75,9 +75,11 @@ const app = createApp({
             
             banking: {
                 connected: false,
+                sessionExpired: false,
                 bankName: '',
                 validUntil: '',
                 lastSync: null,
+                daysSinceSync: null,
                 syncsUsed: 0,
                 dateFrom: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
                 dateTo: new Date().toISOString().split('T')[0],
@@ -628,11 +630,20 @@ const app = createApp({
             try {
                 const data = await API.banking.getStatus();
                 this.banking.connected = data.connected;
-                if (data.connected) {
-                    this.banking.bankName = data.bank_name;
-                    this.banking.validUntil = data.valid_until;
-                    this.banking.lastSync = data.last_sync;
-                    this.banking.syncsUsed = data.syncs_used_today || 0;
+                this.banking.sessionExpired = !!data.session_expired;
+                this.banking.bankName = data.bank_name;
+                this.banking.validUntil = data.valid_until;
+                this.banking.lastSync = data.last_sync;
+                this.banking.syncsUsed = data.syncs_used_today || 0;
+                // Świeżość danych: ile dni od ostatniego UDANEGO importu/syncu.
+                // Liczone niezależnie od "connected" — żeby baner "dane nieaktualne"
+                // zadziałał też, gdy sesja wygasła (last_sync jest wtedy "zamrożony").
+                if (data.last_sync) {
+                    const lastSyncDate = new Date(data.last_sync.replace(' ', 'T'));
+                    const diffMs = Date.now() - lastSyncDate.getTime();
+                    this.banking.daysSinceSync = Math.floor(diffMs / 86400000);
+                } else {
+                    this.banking.daysSinceSync = null;
                 }
             } catch(e) {
                 console.log('Banking status error:', e);

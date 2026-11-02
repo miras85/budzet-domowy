@@ -159,6 +159,9 @@ export default {
                                 <p class="text-xs text-green-400 font-bold">✅ Połączono z {{ banking.bankName }}</p>
                                 <p class="text-xs text-slate-500 mt-1">Ważne do: {{ banking.validUntil }}</p>
                                 <p v-if="banking.lastSync" class="text-xs text-slate-500">Ostatnia sync: {{ banking.lastSync }}</p>
+                                <p v-if="banking.daysSinceSync !== null && banking.daysSinceSync > 2" class="text-xs text-yellow-400 font-bold mt-1">
+                                    ⚠️ Dane nieaktualne: ostatni udany import {{ banking.daysSinceSync }} dni temu
+                                </p>
                             </div>
                             <div class="text-right">
                                 <p class="text-xs text-slate-400">Dziś użyto:</p>
@@ -167,6 +170,14 @@ export default {
                                 </p>
                             </div>
                         </div>
+                    </div>
+                    <div v-else-if="banking.sessionExpired" class="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-xl">
+                        <p class="text-xs text-red-400 font-bold">⚠️ Połączenie z bankiem wygasło</p>
+                        <p v-if="banking.lastSync" class="text-xs text-slate-400 mt-1">
+                            Ostatni udany import: {{ banking.lastSync }}
+                            <span v-if="banking.daysSinceSync !== null">({{ banking.daysSinceSync }} dni temu)</span>
+                        </p>
+                        <p class="text-xs text-slate-400 mt-1">Połącz ponownie, aby wznowić automatyczny import.</p>
                     </div>
                     <div v-else class="mb-4 p-3 bg-slate-800 border border-slate-600 rounded-xl">
                         <p class="text-xs text-slate-400">❌ Brak połączenia z bankiem</p>

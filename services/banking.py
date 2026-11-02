@@ -122,7 +122,10 @@ def start_bank_auth(bank_name: str, bank_country: str = "PL") -> str:
     headers = get_auth_headers()
     body = {
         "access": {
-            "valid_until": (datetime.now(timezone.utc) + timedelta(days=90)).isoformat()
+            # Max dozwolone przez PSD2 RTS (nowelizacja 2022/1392, wcześniej 90 dni)
+            # — mniej częsta ponowna autoryzacja SCA. To tylko PROŚBA: ING może
+            # i tak przyznać krócej (np. 90 dni) wg własnej polityki.
+            "valid_until": (datetime.now(timezone.utc) + timedelta(days=180)).isoformat()
         },
         "aspsp": {
             "name": bank_name,
