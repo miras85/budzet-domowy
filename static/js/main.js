@@ -9,7 +9,7 @@ import DashboardView from './components/DashboardView.js?v=60';
 import AccountsView from './components/AccountsView.js?v=4';
 import GoalsView from './components/GoalsView.js?v=9';
 import PaymentsView from './components/PaymentsView.js?v=6';
-import SettingsView from './components/SettingsView.js?v=57';
+import SettingsView from './components/SettingsView.js?v=58';
 import AddTransactionView from './components/AddTransactionView.js?V=6';
 import SearchView from './components/SearchView.js?v=2';
 import ImportModal from './components/ImportModal.js';

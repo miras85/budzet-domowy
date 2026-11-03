@@ -1,8 +1,9 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════
 # DOMOWYBUDZET - Automatyczny import transakcji z ING (cron)
-# Uruchamiany lokalnie na Oracle o 6:00 czasu polskiego
-# (crontab: 0 6 * * *, serwer w TZ Europe/Warsaw).
+# Uruchamiany lokalnie na Oracle o 6:00 i 18:00 czasu polskiego
+# (crontab: 0 6 * * * oraz 0 18 * * * --retry-if-needed,
+# serwer w TZ Europe/Warsaw).
 # Woła DOKŁADNIE ten sam endpoint co ręczny import w UI
 # (/api/banking/import), więc status importu (last_sync,
 # sync_count_today/4) aktualizuje się identycznie jak przy
@@ -11,13 +12,33 @@
 # AUTO-NADRABIANIE LUKI: zamiast sztywnego okna 7 dni, zakres
 # importu liczony jest od MIN(data ostatniego udanego importu,
 # dziś−7) — jeśli poprzednie uruchomienia padały (np. wygasła
-# sesja banku / CLOSED_SESSION), pierwszy udany import po
-# naprawie sam nadrobi całą zaległość, bez ręcznego wpisywania
-# dat. Zabezpieczenie: nie cofamy się dalej niż 90 dni (przy
-# dłuższej przerwie potrzebny jest ręczny import z szerszym
-# zakresem — patrz procedura odzyskiwania w dokumentacji).
+# sesja banku / CLOSED_SESSION, albo ING odrzucił z powodu
+# limitu liczonego w oknie 24h — patrz niżej), pierwszy udany
+# import po naprawie sam nadrobi całą zaległość, bez ręcznego
+# wpisywania dat. Zabezpieczenie: nie cofamy się dalej niż 90
+# dni (przy dłuższej przerwie potrzebny jest ręczny import
+# z szerszym zakresem — patrz procedura odzyskiwania w dokumentacji).
+#
+# TRYB --retry-if-needed (wieczorne ponowienie o 18:00):
+# ING/Enable Banking limituje zapytania w OKNIE 24 GODZIN, nie
+# "do północy" — potwierdzone na żywym przypadku (3.11.2026):
+# ranny import o 6:00 dostał 429, mimo że to "nowy dzień",
+# bo wczorajsze zapytania (ręczny import + strony stronicowania
+# + odczyt sald) jeszcze nie "wygasły" z 24h okna. Takiego dnia
+# PORANNY import może nic nie zaimportować. Ten tryb, uruchamiany
+# wieczorem, sprawdza czy DZISIEJSZY import już się udał (last_sync
+# z dzisiejszą datą) — jeśli tak, kończy natychmiast (SKIP), zero
+# dodatkowych zapytań do ING. Jeśli nie, próbuje ponownie — o tej
+# porze 24h-owe okno z poprzedniego dnia zwykle już się zwolniło.
 # ═══════════════════════════════════════════════════════════
 set -euo pipefail
+
+RETRY_IF_NEEDED=false
+for arg in "$@"; do
+    if [ "$arg" = "--retry-if-needed" ]; then
+        RETRY_IF_NEEDED=true
+    fi
+done
 
 API="http://127.0.0.1:8000"
 ENV_FILE="/home/ubuntu/homebudget/.auto_import_env"   # chmod 600, poza gitem
@@ -59,6 +80,14 @@ try:
     print(d.get("last_sync") or "")
 except Exception:
     print("")')
+
+# Tryb ponowienia: jeśli dzisiejszy import już się udał (np. poranny
+# przeszedł, albo ktoś zrobił ręczny import w międzyczasie), nie rób
+# nic — zero zapytań do ING, zero ryzyka zużycia budżetu na próżno.
+if [ "$RETRY_IF_NEEDED" = true ] && [ -n "$LAST_SYNC_RAW" ] && [ "${LAST_SYNC_RAW:0:10}" = "$TODAY" ]; then
+    echo "[$(ts)] SKIP (--retry-if-needed): dzisiejszy import już się udał o ${LAST_SYNC_RAW} — nic do zrobienia." >> "$LOG"
+    exit 0
+fi
 
 if [ -n "$LAST_SYNC_RAW" ]; then
     LAST_SYNC_DATE="${LAST_SYNC_RAW:0:10}"

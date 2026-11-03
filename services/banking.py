@@ -48,13 +48,18 @@ def _api_get(path: str, params: dict = None, *,
              max_retries: int = 0, burst_wait: float = 3.0, max_wait: float = 6.0):
     """GET do Enable Banking z opcjonalnym retry na 429.
 
-    UWAGA: 429 z ING = ASPSP_RATE_LIMIT_EXCEEDED, czyli DZIENNY limit PSD2
-    (ok. 4 zapytania/dobę per endpoint per konto), a NIE chwilowy burst.
-    Ponawianie takiego 429 jest bezcelowe — limit resetuje się dopiero o
-    północy, a każda kolejna próba to następne zapytanie do zablokowanego
-    endpointu, które dodatkowo zżera budżet. Dlatego domyślnie max_retries=0
-    (fail-fast): przy 429 od razu zgłaszamy HTTPException(429), a wywołujący
-    (import) łapie to i kontynuuje bez blokad, nie wywalając importu.
+    UWAGA: 429 z ING = ASPSP_RATE_LIMIT_EXCEEDED, czyli limit PSD2
+    (ok. 4 zapytania/endpoint/konto), liczony NAJPEWNIEJ w OKNIE 24 GODZIN
+    (kroczącym), a NIE "do północy" i NIE chwilowy burst. Potwierdzone na
+    żywym przypadku (3.11.2026): import o 6:00 (już "nowy dzień") dostał
+    429, mimo że poprzedniego dnia wieczorem robiliśmy ręczne importy —
+    czyli stare zapytania jeszcze nie "wygasły" z 24h okna. Ponawianie
+    takiego 429 jest bezcelowe — okno zwalnia się dopiero jakiś czas po
+    ostatnim zapytaniu z poprzedniej doby, a każda kolejna próba to
+    następne zapytanie do zablokowanego endpointu, które dodatkowo zżera
+    budżet. Dlatego domyślnie max_retries=0 (fail-fast): przy 429 od razu
+    zgłaszamy HTTPException(429), a wywołujący (import) łapie to i
+    kontynuuje bez blokad, nie wywalając importu.
 
     Parametry burst_wait/max_wait pozostają na wypadek, gdyby kiedyś trzeba
     było świadomie włączyć ponawianie (max_retries>0) dla prawdziwego burstu.
@@ -62,7 +67,7 @@ def _api_get(path: str, params: dict = None, *,
     Zwraca obiekt Response (status 200 lub inny != 429). Na wyczerpanym 429
     rzuca HTTPException(429).
     """
-    last_detail = "ING chwilowo blokuje zapytania (rate limit)."
+    last_detail = "ING odrzucił zapytanie: limit dostępów wyczerpany (liczony w oknie 24 godzin)."
     for attempt in range(max_retries + 1):
         headers = get_auth_headers()  # świeży JWT na każdą próbę
         r = requests.get(f"{API_BASE}{path}", headers=headers, params=params or {})
@@ -98,8 +103,8 @@ def _api_get(path: str, params: dict = None, *,
                   f"czekam {min(wait_seconds, max_wait):.0f}s i ponawiam…")
             time.sleep(min(wait_seconds, max_wait))
             continue
-        print(f"[RATE-LIMIT] 429 na {path} — dzienny limit ING (ASPSP) wyczerpany, "
-              f"nie ponawiam (fail-fast). Reset o północy.")
+        print(f"[RATE-LIMIT] 429 na {path} — limit ING wyczerpany (liczony w oknie "
+              f"24 godzin, nie do północy), nie ponawiam (fail-fast).")
         raise HTTPException(status_code=429, detail=last_detail)
 
     raise HTTPException(status_code=429, detail=last_detail)

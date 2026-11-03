@@ -248,7 +248,7 @@ def sync_transactions(
         if session.sync_count_today >= 4:
             raise HTTPException(
                 status_code=429,
-                detail=f"Limit ING: maksymalnie 4 dostępy do banku dziennie (import i podgląd łącznie). Użyto: {session.sync_count_today}/4. Reset o północy."
+                detail=f"Limit ING: maksymalnie 4 dostępy do banku dziennie (import i podgląd łącznie). Użyto: {session.sync_count_today}/4. Licznik aplikacji zeruje się o północy, ale ING liczy własny limit w oknie 24 godzin — może odmówić także po północy, jeśli wczorajsze zapytania jeszcze nie 'wygasły'."
             )
     else:
         # Nowy dzień — reset licznika
@@ -353,7 +353,9 @@ def import_transactions(
                 status_code=429,
                 detail=(f"Limit ING: maksymalnie 4 dostępy do banku dziennie "
                         f"(import i podgląd łącznie). Użyto: {session.sync_count_today}/4. "
-                        f"Reset o północy.")
+                        f"Licznik aplikacji zeruje się o północy, ale ING liczy własny "
+                        f"limit w oknie 24 godzin — może odmówić także po północy, jeśli "
+                        f"wczorajsze zapytania jeszcze nie 'wygasły'.")
             )
     else:
         # Nowy dzień — reset wspólnego licznika

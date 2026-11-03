@@ -219,7 +219,7 @@ export default {
                             {{ banking.syncing ? '⏳ Synchronizuję...' : '🔄 Podgląd (bez importu)' }}
                         </button>
                         <p v-if="banking.syncsUsed >= 4" class="text-xs text-red-400 text-center">
-                            Limit dzienny wyczerpany. Reset o północy.
+                            Limit dzienny wyczerpany (licznik zeruje się o północy). ING liczy jednak własny limit w oknie 24 godzin — może odmówić także po północy.
                         </p>
                         <p v-if="banking.lastImportResult" class="text-xs text-green-400 text-center mt-2">
                             {{ banking.lastImportResult }}
